@@ -1,0 +1,2179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Rutas y Visitas</title>
+<script>
+  // Cargador con CDNs de respaldo: si uno falla (bloqueo de red/firewall), prueba el siguiente.
+  // La app funciona igual sin estas librerías: solo se deshabilitan gráficos y mapa.
+  function loadWithFallback(urls, isCss){
+    return new Promise(resolve=>{
+      let i = 0;
+      function tryNext(){
+        if(i >= urls.length){ resolve(false); return; }
+        const el = document.createElement(isCss ? 'link' : 'script');
+        if(isCss){ el.rel='stylesheet'; el.href=urls[i]; } else { el.src=urls[i]; }
+        el.onload = ()=>resolve(true);
+        el.onerror = ()=>{ el.remove(); i++; tryNext(); };
+        document.head.appendChild(el);
+      }
+      tryNext();
+    });
+  }
+  window.__libsReady = Promise.all([
+    loadWithFallback([
+      'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
+      'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css',
+      'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    ], true),
+    loadWithFallback([
+      'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+      'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+      'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    ], false).then(ok=>window.__leafletReady = ok),
+    loadWithFallback([
+      'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+      'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+      'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+    ], false).then(ok=>window.__xlsxReady = ok)
+  ]);
+</script>
+<style>
+  :root{
+    --bg:#14161a;
+    --panel:#1b1e24;
+    --panel2:#20242b;
+    --border:#2b2f38;
+    --text:#e8e6e1;
+    --text-dim:#9a9fab;
+    --amber:#e0a527;
+    --amber-dim:#7a5f1e;
+    --green:#3fae66;
+    --red:#d15b5b;
+    --yellow:#d1a83f;
+    --blue:#4f8fd1;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    display:flex;
+    min-height:100vh;
+  }
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#33373f;border-radius:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  /* ---------- Sidebar ---------- */
+  #sidebar{
+    width:300px;
+    min-width:300px;
+    background:var(--panel);
+    border-right:1px solid var(--border);
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    position:sticky;
+    top:0;
+  }
+  .brand{
+    padding:20px 18px 14px 18px;
+    border-bottom:1px solid var(--border);
+  }
+  .brand .brand-logo{
+    display:block;
+    width:118px;
+    height:auto;
+    margin-bottom:10px;
+  }
+  .brand .logo{
+    font-size:11px;
+    letter-spacing:2px;
+    color:var(--amber);
+    font-weight:700;
+    text-transform:uppercase;
+  }
+  .brand h1{
+    font-size:17px;
+    margin:4px 0 0 0;
+    font-weight:600;
+    line-height:1.3;
+  }
+  .brand .sub{
+    font-size:12px;
+    color:var(--text-dim);
+    margin-top:2px;
+  }
+
+  .upload-zone{
+    margin:14px;
+    padding:16px 12px;
+    border:1.5px dashed var(--amber-dim);
+    border-radius:var(--radius);
+    text-align:center;
+    cursor:pointer;
+    transition:.15s;
+    background:rgba(224,165,39,0.04);
+  }
+  .upload-zone:hover, .upload-zone.dragover{
+    border-color:var(--amber);
+    background:rgba(224,165,39,0.09);
+  }
+  .upload-zone .icon{font-size:22px;margin-bottom:4px;}
+  .upload-zone .txt{font-size:12.5px;color:var(--text-dim);}
+  .upload-zone .txt b{color:var(--amber);font-weight:600;}
+  .upload-zone.compact{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:9px 12px;
+    text-align:left;
+  }
+  .upload-zone.compact .icon{font-size:17px;margin-bottom:0;flex-shrink:0;}
+  .upload-zone.compact .txt{font-size:11.5px;line-height:1.3;}
+  #fileInput{display:none;}
+
+  .small-upload-btn{
+    background:var(--panel2);
+    border:1px solid var(--amber-dim);
+    color:var(--amber);
+    padding:8px 14px;
+    border-radius:8px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+  .small-upload-btn:hover{border-color:var(--amber);background:rgba(224,165,39,0.08);}
+
+  .overview-brand{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    margin-bottom:22px;
+    padding-bottom:20px;
+    border-bottom:1px solid var(--border);
+  }
+  .overview-brand-logo{width:110px;height:auto;display:block;flex-shrink:0;}
+  .overview-brand-title{font-size:20px;font-weight:700;color:var(--text);}
+  .overview-brand-sub{font-size:12.5px;color:var(--text-dim);margin-top:2px;}
+
+  .sidebar-section-title{
+    padding:10px 18px 6px 18px;
+    font-size:10.5px;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--text-dim);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .sidebar-section-title .clear-btn{
+    font-size:10.5px;
+    color:var(--red);
+    cursor:pointer;
+    text-transform:none;
+    letter-spacing:0;
+    opacity:.75;
+  }
+  .sidebar-section-title .clear-btn:hover{opacity:1;text-decoration:underline;}
+
+  #routeList{
+    flex:1;
+    overflow-y:auto;
+    padding:0 10px 10px 10px;
+  }
+  .route-item{
+    padding:10px 12px;
+    margin-bottom:6px;
+    border-radius:8px;
+    cursor:pointer;
+    border:1px solid transparent;
+    transition:.12s;
+  }
+  .route-item:hover{background:var(--panel2);}
+  .route-item.active{
+    background:rgba(224,165,39,0.12);
+    border-color:var(--amber-dim);
+  }
+  .route-item .r-date{
+    font-size:12px;
+    font-weight:600;
+    color:var(--text);
+  }
+  .route-item .r-meta{
+    font-size:11px;
+    color:var(--text-dim);
+    margin-top:2px;
+    display:flex;
+    justify-content:space-between;
+  }
+  .route-item .r-badges{
+    margin-top:6px;
+    display:flex;
+    gap:6px;
+    font-size:10px;
+  }
+  .badge{
+    padding:1px 6px;
+    border-radius:20px;
+    font-weight:600;
+  }
+  .badge.ok{background:rgba(63,174,102,.15);color:var(--green);}
+  .badge.bad{background:rgba(209,91,91,.15);color:var(--red);}
+  .badge.pending{background:rgba(209,168,63,.15);color:var(--yellow);}
+  .route-item .r-del{
+    float:right;
+    color:var(--text-dim);
+    font-size:13px;
+    opacity:0;
+  }
+  .route-item:hover .r-del{opacity:.6;}
+  .route-item .r-del:hover{opacity:1;color:var(--red);}
+
+  .empty-state{
+    padding:20px 18px;
+    font-size:12px;
+    color:var(--text-dim);
+    text-align:center;
+    line-height:1.6;
+  }
+
+  .overview-footer{
+    margin-top:28px;
+    padding-top:14px;
+    border-top:1px solid var(--border);
+    font-size:11px;
+    color:var(--text-dim);
+    display:flex;
+    justify-content:flex-end;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    opacity:.75;
+  }
+  .overview-footer:hover{opacity:1;}
+  .overview-footer .clear-btn{
+    margin-right:auto;
+    color:var(--red);
+    cursor:pointer;
+    opacity:.85;
+  }
+  .overview-footer .clear-btn:hover{opacity:1;text-decoration:underline;}
+  .overview-footer button{
+    background:none;
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    padding:5px 10px;
+    border-radius:6px;
+    font-size:11px;
+    cursor:pointer;
+  }
+  .overview-footer button:hover{color:var(--text);border-color:var(--text-dim);}
+
+  /* ---------- Main ---------- */
+  #main{
+    flex:1;
+    min-width:0;
+    height:100vh;
+    overflow-y:auto;
+  }
+  #topbar{
+    position:sticky;
+    top:0;
+    z-index:20;
+    background:rgba(20,22,26,0.92);
+    backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--border);
+    padding:0 28px;
+    display:flex;
+    align-items:center;
+    gap:4px;
+    height:56px;
+  }
+  .tab-btn{
+    background:none;
+    border:none;
+    color:var(--text-dim);
+    font-size:13.5px;
+    padding:10px 16px;
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+    font-weight:500;
+  }
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active{color:var(--amber);border-bottom-color:var(--amber);}
+
+  .view{display:none;padding:26px 28px 60px 28px;}
+  .view.active{display:block;}
+
+  h2.view-title{
+    font-size:19px;
+    font-weight:600;
+    margin:0 0 4px 0;
+  }
+  .view-sub{
+    font-size:12.5px;
+    color:var(--text-dim);
+    margin-bottom:22px;
+  }
+
+  .kpi-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+    gap:14px;
+    margin-bottom:24px;
+  }
+  .kpi-card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px 18px;
+  }
+  .kpi-card .kpi-label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.6px;
+    color:var(--text-dim);
+    margin-bottom:8px;
+  }
+  .kpi-card .kpi-value{
+    font-size:26px;
+    font-weight:700;
+    color:var(--text);
+  }
+  .kpi-card .kpi-value.amber{color:var(--amber);}
+  .kpi-card .kpi-value.green{color:var(--green);}
+  .kpi-card .kpi-value.red{color:var(--red);}
+  .kpi-card .kpi-sub{
+    font-size:11px;
+    color:var(--text-dim);
+    margin-top:4px;
+  }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px 20px;
+    margin-bottom:20px;
+  }
+  .panel h3{
+    font-size:13.5px;
+    font-weight:600;
+    margin:0 0 14px 0;
+    color:var(--text);
+  }
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{
+    text-align:left;
+    color:var(--text-dim);
+    font-weight:600;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.4px;
+    padding:8px 10px;
+    border-bottom:1px solid var(--border);
+  }
+  td{
+    padding:8px 10px;
+    border-bottom:1px solid #22252c;
+    color:var(--text);
+  }
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--panel2);}
+  .num{text-align:right;font-variant-numeric:tabular-nums;}
+
+  .status-pill{
+    padding:2px 8px;
+    border-radius:20px;
+    font-size:10.5px;
+    font-weight:600;
+    display:inline-block;
+  }
+  .status-pill.DELIVERED{background:rgba(63,174,102,.15);color:var(--green);}
+  .status-pill.REJECTED{background:rgba(209,91,91,.15);color:var(--red);}
+  .status-pill.IN_PROGRESS{background:rgba(209,168,63,.15);color:var(--yellow);}
+  .status-pill.ATENDIDO{background:rgba(63,174,102,.15);color:var(--green);}
+  .status-pill.PENDIENTE{background:rgba(224,165,39,.15);color:var(--amber);}
+  .status-pill.RECHAZADO{background:rgba(209,91,91,.15);color:var(--red);}
+  .status-pill.EN_PROGRESO{background:rgba(209,168,63,.15);color:var(--yellow);}
+
+  #routeMap{height:360px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);}
+
+  .route-detail-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    flex-wrap:wrap;
+    gap:14px;
+    margin-bottom:18px;
+  }
+  .route-detail-header .rd-info h2{margin:0;font-size:19px;}
+  .route-detail-header .rd-info .rd-meta{font-size:12.5px;color:var(--text-dim);margin-top:4px;}
+  .route-detail-header .rd-meta span{margin-right:14px;}
+
+  select, input[type=text]{
+    background:var(--panel2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:7px 10px;
+    border-radius:7px;
+    font-size:12.5px;
+  }
+  select:focus, input:focus{outline:1px solid var(--amber);}
+
+  /* Selector de selección múltiple (checkboxes) */
+  .msel{position:relative;}
+  .msel-btn{
+    background:var(--panel2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:7px 10px;
+    border-radius:7px;
+    font-size:12.5px;
+    cursor:pointer;
+    min-width:150px;
+    max-width:220px;
+    text-align:left;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .msel-btn::after{content:'▾';font-size:9px;color:var(--text-dim);flex-shrink:0;}
+  .msel-btn:hover{border-color:var(--text-dim);}
+  .msel-btn:disabled{opacity:.45;cursor:not-allowed;}
+  .msel-btn.has-selection{border-color:var(--amber-dim);color:var(--amber);}
+  .msel-panel{
+    display:none;
+    position:absolute;
+    top:calc(100% + 4px);
+    left:0;
+    min-width:240px;
+    max-height:280px;
+    overflow-y:auto;
+    background:var(--panel2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:6px;
+    z-index:50;
+    box-shadow:0 10px 24px rgba(0,0,0,.45);
+  }
+  .msel-panel.open{display:block;}
+  .msel-actions{
+    display:flex;
+    justify-content:space-between;
+    padding:4px 6px 8px 6px;
+    margin-bottom:4px;
+    border-bottom:1px solid var(--border);
+    font-size:11px;
+  }
+  .msel-actions span{color:var(--amber);cursor:pointer;}
+  .msel-actions span:hover{text-decoration:underline;}
+  .msel-empty{padding:8px 6px;font-size:11.5px;color:var(--text-dim);}
+  .msel-option{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:5px 6px;
+    border-radius:5px;
+    font-size:12px;
+    cursor:pointer;
+  }
+  .msel-option:hover{background:var(--panel);}
+  .msel-option input{accent-color:var(--amber);flex-shrink:0;}
+
+  .filter-row{
+    display:flex;
+    gap:10px;
+    margin-bottom:14px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+
+  .placeholder-big{
+    text-align:center;
+    padding:80px 20px;
+    color:var(--text-dim);
+  }
+  .placeholder-big .icon{font-size:38px;margin-bottom:12px;opacity:.5;}
+  .placeholder-big h3{color:var(--text);font-weight:600;margin-bottom:6px;}
+  .placeholder-big p{font-size:12.5px;max-width:360px;margin:0 auto;}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:900px){.two-col{grid-template-columns:1fr;}}
+
+  .bar-track{
+    height:8px;background:#2b2f38;border-radius:4px;overflow:hidden;margin-top:6px;
+  }
+  .bar-fill{height:100%;background:var(--amber);}
+
+  .visita-row{display:flex;align-items:center;gap:10px;}
+  .visita-track{
+    flex:0 0 130px;
+    height:7px;
+    border-radius:4px;
+    background:#2b2f38;
+    overflow:hidden;
+  }
+  .visita-fill{height:100%;border-radius:4px;background:var(--green);}
+  .visita-fill.full{background:var(--blue);}
+  .visita-label{font-size:12.5px;color:var(--text);white-space:nowrap;font-variant-numeric:tabular-nums;}
+  tr.row-alert td{background:rgba(209,91,91,0.07);}
+  .chofer-cell .c-name{font-weight:600;font-size:13px;}
+  .chofer-cell .c-sub{font-size:11px;color:var(--text-dim);margin-top:1px;}
+
+  a.file-link{color:var(--blue);text-decoration:none;}
+  a.file-link:hover{text-decoration:underline;}
+
+  #toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--panel2);border:1px solid var(--border);
+    padding:10px 18px;border-radius:8px;font-size:12.5px;
+    box-shadow:0 6px 18px rgba(0,0,0,.4);
+    opacity:0;pointer-events:none;transition:.25s;
+    z-index:100;
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+</style>
+</head>
+<body>
+
+<input type="file" id="fileInput" accept=".json" multiple style="display:none;">
+
+<div id="main">
+  <div id="topbar">
+    <button class="tab-btn active" data-view="overview">Resumen general</button>
+    <button class="tab-btn" data-view="routeDetail">Detalle de ruta</button>
+    <button class="tab-btn" data-view="products">Productos</button>
+    <button class="tab-btn" data-view="clients">Clientes</button>
+    <button class="tab-btn" data-view="seguimiento">Seguimiento vs. Reporte Ventas</button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="view active" id="view-overview">
+    <div class="overview-brand">
+      <img src="data:image/png;base64,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" alt="RANSA" class="overview-brand-logo">
+      <div>
+        <div class="overview-brand-title">Control de Rutas y Visitas</div>
+        <div class="overview-brand-sub">Backups de visitas por vendedor / ruta</div>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+      <div>
+        <h2 class="view-title">Resumen general</h2>
+        <div class="view-sub">Consolidado de todas las rutas cargadas.</div>
+      </div>
+      <button id="uploadBtnSmall" class="small-upload-btn">📂 Cargar archivo(s)</button>
+    </div>
+
+    <div id="overviewEmpty" class="placeholder-big">
+      <div class="icon">🗺️</div>
+      <h3>Sin rutas cargadas todavía</h3>
+      <p>Usa el botón "Cargar archivo(s)" de arriba para subir uno o más JSON de backup de visitas y ver el dashboard consolidado.</p>
+    </div>
+
+    <div id="overviewContent" style="display:none;">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Rutas cargadas</div>
+          <div class="kpi-value" id="kpiRoutes">0</div>
+          <div class="kpi-sub" id="kpiRoutesSub">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Visitas totales</div>
+          <div class="kpi-value amber" id="kpiVisits">0</div>
+          <div class="kpi-sub" id="kpiVisitsSub">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">% de Avance</div>
+          <div class="kpi-value green" id="kpiEffect">0%</div>
+          <div class="kpi-sub" id="kpiEffectSub">Promedio de todas las rutas</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Visitas rechazadas</div>
+          <div class="kpi-value red" id="kpiRejected">0</div>
+          <div class="kpi-sub" id="kpiRejectedSub">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Choferes y avance por ruta</h3>
+        <table>
+          <thead><tr>
+            <th>Chofer</th><th>Ruta</th><th>Visitas</th><th class="num">Avance reporte</th>
+          </tr></thead>
+          <tbody id="choferesTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="overview-footer">
+      <span id="storageInfo">0 KB guardados</span>
+      <span class="clear-btn" id="clearAllBtn">Borrar todo</span>
+      <button id="exportAllBtn" title="Descarga un archivo .json">Exportar todo</button>
+      <button id="exportTextBtn" title="Si la descarga no funciona por políticas del navegador">Ver como texto</button>
+    </div>
+  </div>
+
+  <!-- ROUTE DETAIL -->
+  <div class="view" id="view-routeDetail">
+    <div class="filter-row" id="routeSelectRow" style="display:none;">
+      <select id="routeDetailSelect" style="min-width:240px;"></select>
+      <button id="deleteActiveRouteBtn" style="background:var(--panel2);border:1px solid var(--border);color:var(--red);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;">🗑 Eliminar esta ruta</button>
+    </div>
+    <div id="routeDetailEmpty" class="placeholder-big">
+      <div class="icon">🛣️</div>
+      <h3>Selecciona una ruta</h3>
+      <p>Elige una ruta en el selector de arriba, o haz clic en una fila de la tabla "Choferes y avance por ruta" en Resumen general.</p>
+    </div>
+    <div id="routeDetailContent" style="display:none;">
+      <div class="route-detail-header">
+        <div class="rd-info">
+          <h2 id="rdClientTitle">—</h2>
+          <div class="rd-meta">
+            <span id="rdMeta1"></span>
+            <span id="rdMeta2"></span>
+            <span id="rdMeta3"></span>
+            <span id="rdMeta4"></span>
+          </div>
+        </div>
+        <div class="kpi-grid" style="grid-template-columns:repeat(4,auto);margin-bottom:0;">
+          <div class="kpi-card"><div class="kpi-label">Visitas</div><div class="kpi-value" id="rdKpiVisits">0</div></div>
+          <div class="kpi-card"><div class="kpi-label">Entregadas</div><div class="kpi-value green" id="rdKpiOk">0</div></div>
+          <div class="kpi-card"><div class="kpi-label">Rechazadas</div><div class="kpi-value red" id="rdKpiBad">0</div></div>
+          <div class="kpi-card"><div class="kpi-label">Ventas (S/)</div><div class="kpi-value amber" id="rdKpiSales">0.00</div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Mapa de visitas</h3>
+        <div id="routeMap"></div>
+      </div>
+
+      <div class="panel">
+        <div class="filter-row">
+          <h3 style="margin:0;">Visitas de la ruta</h3>
+          <select id="rdStatusFilter" style="margin-left:auto;">
+            <option value="">Todos los estados</option>
+            <option value="DELIVERED">Entregadas</option>
+            <option value="REJECTED">Rechazadas</option>
+            <option value="IN_PROGRESS">En progreso</option>
+          </select>
+        </div>
+        <table>
+          <thead><tr>
+            <th>#</th><th>Cliente</th><th>Código</th><th>Estado</th><th>Motivo</th><th class="num">Monto (S/)</th><th class="num">Items</th>
+          </tr></thead>
+          <tbody id="rdVisitsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRODUCTS -->
+  <div class="view" id="view-products">
+    <h2 class="view-title">Productos</h2>
+    <div class="view-sub">Consolidado de productos vendidos en las rutas cargadas.</div>
+    <div id="productsEmpty" class="placeholder-big">
+      <div class="icon">📦</div>
+      <h3>Sin datos de productos</h3>
+      <p>Carga rutas para ver el ranking de productos vendidos.</p>
+    </div>
+    <div id="productsContent" style="display:none;">
+      <div class="filter-row">
+        <input type="text" id="productSearch" placeholder="Buscar producto o marca...">
+        <select id="categoryFilter"><option value="">Todas las categorías</option></select>
+      </div>
+      <div class="panel">
+        <table>
+          <thead><tr>
+            <th>Producto</th><th>Marca</th><th>Categoría</th><th class="num">Cantidad (cajas/und)</th><th class="num">Venta (S/)</th>
+          </tr></thead>
+          <tbody id="productsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLIENTS -->
+  <div class="view" id="view-clients">
+    <h2 class="view-title">Clientes</h2>
+    <div class="view-sub">Clientes visitados a través de todas las rutas cargadas.</div>
+    <div id="clientsEmpty" class="placeholder-big">
+      <div class="icon">🏬</div>
+      <h3>Sin datos de clientes</h3>
+      <p>Carga rutas para ver el listado consolidado de clientes.</p>
+    </div>
+    <div id="clientsContent" style="display:none;">
+      <div class="filter-row">
+        <input type="text" id="clientSearch" placeholder="Buscar cliente o código...">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-dim);cursor:pointer;">
+          <input type="checkbox" id="onlyPendingChk" style="accent-color:var(--amber);">
+          Solo clientes con pendientes
+        </label>
+        <button id="exportClientsExcelBtn" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;">⬇ Exportar Excel (atendidos)</button>
+      </div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:16px;">
+        <div class="kpi-card">
+          <div class="kpi-label">Clientes con pendientes</div>
+          <div class="kpi-value" id="kpiClientsPending" style="color:var(--yellow);">0</div>
+          <div class="kpi-sub" id="kpiClientsPendingSub">—</div>
+        </div>
+      </div>
+      <div class="panel">
+        <table>
+          <thead><tr>
+            <th>Cliente</th><th>Código</th><th class="num">Visitas</th><th class="num">Entregadas</th><th class="num">Rechazadas</th><th class="num">Pendientes</th><th class="num">Compra total (S/)</th>
+          </tr></thead>
+          <tbody id="clientsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEGUIMIENTO VS REPORTE DE VENTAS -->
+  <div class="view" id="view-seguimiento">
+    <h2 class="view-title">Seguimiento vs. Reporte de Ventas</h2>
+    <div class="view-sub">Carga el reporte de ventas (Excel/SAP) del día para ver qué clientes ya fueron atendidos y cuáles siguen pendientes.</div>
+
+    <div class="two-col" style="margin-bottom:20px;">
+      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
+        <h3 style="margin-bottom:8px;font-size:12.5px;">Reporte de ventas</h3>
+        <div id="salesUploadZone" class="upload-zone compact" style="margin:0;">
+          <div class="icon">📊</div>
+          <div class="txt"><b>Cargar Reporte de Ventas</b><br>Archivo .xlsx exportado (hoja "Sheet1")</div>
+        </div>
+        <input type="file" id="salesFileInput" accept=".xlsx,.xls" style="display:none;">
+        <div id="salesFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
+          <span id="salesFileInfoText"></span>
+          <span id="salesFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
+        <h3 style="margin-bottom:8px;font-size:12.5px;">Checklist de rutas (Código / Sala)</h3>
+        <div id="checklistUploadZone" class="upload-zone compact" style="margin:0;">
+          <div class="icon">🗂️</div>
+          <div class="txt"><b>Cargar Checklist</b><br>Archivo .xlsx con hoja "Checklist" (Transporte, Código, Sala)</div>
+        </div>
+        <input type="file" id="checklistFileInput" accept=".xlsx,.xls" style="display:none;">
+        <div id="checklistFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
+          <span id="checklistFileInfoText"></span>
+          <span id="checklistFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="seguimientoEmpty" class="placeholder-big">
+      <div class="icon">📊</div>
+      <h3>Sube el reporte de ventas para comparar</h3>
+      <p>Se compara cada cliente del reporte contra las visitas de todas las rutas (JSON) que ya cargaste. Si el cliente aparece como entregado, se marca "Atendido"; si no aparece en ninguna ruta, se marca "Pendiente". El checklist es opcional: si lo cargas, podrás filtrar por Código de ruta y por Sala.</p>
+    </div>
+
+    <div id="seguimientoContent" style="display:none;">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Clientes en el reporte</div>
+          <div class="kpi-value" id="segKpiTotal">0</div>
+          <div class="kpi-sub" id="segKpiTotalSub">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Atendidos</div>
+          <div class="kpi-value green" id="segKpiAtendidos">0</div>
+          <div class="kpi-sub" id="segKpiAtendidosSub">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Pendientes</div>
+          <div class="kpi-value" id="segKpiPendientes" style="color:var(--yellow);">0</div>
+          <div class="kpi-sub">Sin ninguna visita registrada</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Rechazados</div>
+          <div class="kpi-value red" id="segKpiRechazados">0</div>
+          <div class="kpi-sub">Visitados pero sin entrega</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">% Avance</div>
+          <div class="kpi-value amber" id="segKpiAvance">0%</div>
+          <div class="kpi-sub">Atendidos sobre total del reporte</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="filter-row">
+          <input type="text" id="segSearch" placeholder="Buscar cliente o código...">
+          <div class="msel" id="segStatusMsel">
+            <button type="button" class="msel-btn" id="segStatusBtn">Todos los estados</button>
+            <div class="msel-panel" id="segStatusPanel"></div>
+          </div>
+          <div class="msel" id="segTransporteMsel">
+            <button type="button" class="msel-btn" id="segTransporteBtn">Todos los transportes</button>
+            <div class="msel-panel" id="segTransportePanel"></div>
+          </div>
+          <div class="msel" id="segCodigoMsel">
+            <button type="button" class="msel-btn" id="segCodigoBtn">Todos los códigos</button>
+            <div class="msel-panel" id="segCodigoPanel"></div>
+          </div>
+          <div class="msel" id="segSalaMsel">
+            <button type="button" class="msel-btn" id="segSalaBtn">Todas las salas</button>
+            <div class="msel-panel" id="segSalaPanel"></div>
+          </div>
+          <button id="exportSeguimientoExcelBtn" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;">⬇ Exportar Excel</button>
+        </div>
+        <table>
+          <thead><tr>
+            <th>Cliente</th><th>Código Cliente</th><th>Transporte(s)</th><th>Código Ruta</th><th>Sala</th><th class="num">Líneas ped.</th><th class="num">Monto ref. (S/)</th><th>Estado</th>
+          </tr></thead>
+          <tbody id="segTbody"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* =========================================================
+   ESTADO Y PERSISTENCIA
+   ========================================================= */
+const STORAGE_KEY = 'jrgrodval_rutas_visitas_v1';
+let routes = [];          // array de rutas parseadas
+let activeRouteId = null; // id de ruta seleccionada en Detalle de ruta
+let leafletMap = null;
+
+/* =========================================================
+   REPORTE DE VENTAS (EXCEL) — universo de clientes esperados
+   ========================================================= */
+const SALES_STORAGE_KEY = 'jrgrodval_reporte_ventas_v1';
+let salesReport = null; // { fileName, loadedAt, clients:[{code,name,transportes:[],rutas:[],lineCount,totalFact}] }
+
+function loadSalesFromStorage(){
+  try{
+    const raw = localStorage.getItem(SALES_STORAGE_KEY);
+    salesReport = raw ? JSON.parse(raw) : null;
+  }catch(e){
+    console.error('Error leyendo reporte de ventas guardado', e);
+    salesReport = null;
+  }
+}
+function saveSalesToStorage(){
+  try{
+    if(salesReport) localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(salesReport));
+    else localStorage.removeItem(SALES_STORAGE_KEY);
+  }catch(e){
+    showToast('No se pudo guardar el reporte de ventas en el almacenamiento local.');
+    console.error(e);
+  }
+}
+
+function normalizeHeader(h){
+  return String(h||'')
+    .trim().toLowerCase()
+    .replace(/\.+$/,'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+
+function findHeaderIndex(headers, matcher){
+  for(let i=0;i<headers.length;i++){
+    if(matcher(normalizeHeader(headers[i]))) return i;
+  }
+  return -1;
+}
+
+function parseSalesWorkbook(arrayBuffer, fileName){
+  if(typeof XLSX === 'undefined'){
+    throw new Error('LIB_XLSX_NO_DISPONIBLE');
+  }
+  const wb = XLSX.read(arrayBuffer, {type:'array'});
+  const sheetName = wb.SheetNames.includes('Sheet1') ? 'Sheet1' : wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+  if(rows.length < 2) throw new Error('SIN_FILAS');
+
+  const headers = rows[0];
+  const idxCode = findHeaderIndex(headers, h => h === 'solicit');
+  const idxName = findHeaderIndex(headers, h => h.includes('solicitante'));
+  const idxTransporte = findHeaderIndex(headers, h => h === 'transporte');
+  const idxRuta = findHeaderIndex(headers, h => h === 'ruta');
+  const idxTotalFact = findHeaderIndex(headers, h => h === 'total_fact');
+
+  if(idxCode===-1 || idxName===-1){
+    throw new Error('COLUMNAS_NO_ENCONTRADAS');
+  }
+
+  const clientsMap = {};
+  for(let r=1; r<rows.length; r++){
+    const row = rows[r];
+    if(!row || row.length===0) continue;
+    const rawCode = row[idxCode];
+    if(rawCode===''||rawCode===undefined||rawCode===null) continue;
+    const code = parseInt(String(rawCode).replace(/[^0-9]/g,''), 10);
+    if(isNaN(code)) continue;
+    const name = String(row[idxName]||'').trim();
+    const transporte = idxTransporte!==-1 ? String(row[idxTransporte]||'').trim() : '';
+    const ruta = idxRuta!==-1 ? String(row[idxRuta]||'').trim() : '';
+    const totalFact = idxTotalFact!==-1 ? (parseFloat(row[idxTotalFact])||0) : 0;
+
+    if(!clientsMap[code]){
+      clientsMap[code] = {code, name, transportes:new Set(), rutas:new Set(), lineCount:0, totalFact:0};
+    }
+    if(transporte) clientsMap[code].transportes.add(transporte);
+    if(ruta) clientsMap[code].rutas.add(ruta);
+    clientsMap[code].lineCount++;
+    clientsMap[code].totalFact += totalFact;
+  }
+
+  const clients = Object.values(clientsMap).map(c=>({
+    code:c.code, name:c.name,
+    transportes:[...c.transportes], rutas:[...c.rutas],
+    lineCount:c.lineCount, totalFact:c.totalFact
+  }));
+
+  if(clients.length===0) throw new Error('SIN_CLIENTES');
+
+  return {
+    fileName, loadedAt:new Date().toISOString(),
+    totalRows: rows.length-1,
+    clients
+  };
+}
+
+function handleSalesFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const parsed = parseSalesWorkbook(e.target.result, file.name);
+      salesReport = parsed;
+      saveSalesToStorage();
+      renderSalesFileInfo();
+      renderSeguimiento();
+      renderRouteList();
+      showToast('Reporte de ventas cargado: '+parsed.clients.length+' clientes distintos.');
+    }catch(err){
+      console.error('Error parseando reporte de ventas', err);
+      let msg = 'No se pudo leer el archivo Excel.';
+      if(err.message==='COLUMNAS_NO_ENCONTRADAS') msg = 'No se encontraron las columnas esperadas (Solicit. / Solicitante) en la hoja.';
+      else if(err.message==='SIN_CLIENTES' || err.message==='SIN_FILAS') msg = 'El archivo no tiene filas de datos reconocibles.';
+      else if(err.message==='LIB_XLSX_NO_DISPONIBLE') msg = 'No se pudo cargar la librería para leer Excel desde internet. Revisa tu conexión e intenta de nuevo.';
+      showToast(msg);
+    }
+  };
+  reader.onerror = ()=> showToast('No se pudo leer el archivo seleccionado.');
+  reader.readAsArrayBuffer(file);
+}
+
+function renderSalesFileInfo(){
+  const info = document.getElementById('salesFileInfo');
+  const text = document.getElementById('salesFileInfoText');
+  if(!salesReport){ info.style.display='none'; return; }
+  info.style.display='block';
+  text.textContent = `Cargado: ${esc(salesReport.fileName)} — ${salesReport.clients.length} clientes (${formatDate(salesReport.loadedAt.slice(0,10))})`;
+}
+
+/* =========================================================
+   CHECKLIST DE RUTAS (Transporte -> Código / Sala)
+   ========================================================= */
+const CHECKLIST_STORAGE_KEY = 'jrgrodval_checklist_sala_v1';
+let checklist = null; // { fileName, loadedAt, map:{transporte:{codigo,sala,agencia,...}}, salas:[...], codigos:[...] }
+
+function loadChecklistFromStorage(){
+  try{
+    const raw = localStorage.getItem(CHECKLIST_STORAGE_KEY);
+    checklist = raw ? JSON.parse(raw) : null;
+  }catch(e){
+    console.error('Error leyendo checklist guardado', e);
+    checklist = null;
+  }
+}
+function saveChecklistToStorage(){
+  try{
+    if(checklist) localStorage.setItem(CHECKLIST_STORAGE_KEY, JSON.stringify(checklist));
+    else localStorage.removeItem(CHECKLIST_STORAGE_KEY);
+  }catch(e){
+    showToast('No se pudo guardar el checklist en el almacenamiento local.');
+    console.error(e);
+  }
+}
+
+function findHeaderRow(rows, requiredNorm){
+  const limit = Math.min(rows.length, 15);
+  for(let r=0; r<limit; r++){
+    const norm = (rows[r]||[]).map(normalizeHeader);
+    if(requiredNorm.every(h => norm.includes(h))) return r;
+  }
+  return -1;
+}
+
+function parseChecklistWorkbook(arrayBuffer, fileName){
+  if(typeof XLSX === 'undefined'){
+    throw new Error('LIB_XLSX_NO_DISPONIBLE');
+  }
+  const wb = XLSX.read(arrayBuffer, {type:'array'});
+  const sheetName = wb.SheetNames.includes('Checklist') ? 'Checklist' : wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+
+  const headerRowIdx = findHeaderRow(rows, ['transporte','codigo','sala']);
+  if(headerRowIdx===-1) throw new Error('COLUMNAS_NO_ENCONTRADAS');
+  const headers = rows[headerRowIdx];
+
+  const idxTransporte = findHeaderIndex(headers, h => h==='transporte');
+  const idxCodigo = findHeaderIndex(headers, h => h==='codigo');
+  const idxSala = findHeaderIndex(headers, h => h==='sala');
+  const idxAgencia = findHeaderIndex(headers, h => h==='agencia');
+  const idxDistritos = findHeaderIndex(headers, h => h.includes('distrito'));
+
+  const map = {};
+  const salasSet = new Set();
+  const codigosSet = new Set();
+  for(let r=headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r];
+    if(!row || row.length===0) continue;
+    const transporte = String(row[idxTransporte]||'').trim();
+    if(!transporte) continue;
+    const codigo = idxCodigo!==-1 ? String(row[idxCodigo]||'').trim() : '';
+    const sala = idxSala!==-1 ? String(row[idxSala]||'').trim() : '';
+    const agencia = idxAgencia!==-1 ? String(row[idxAgencia]||'').trim() : '';
+    const distritos = idxDistritos!==-1 ? String(row[idxDistritos]||'').trim() : '';
+    map[transporte] = {codigo, sala, agencia, distritos};
+    if(sala) salasSet.add(sala);
+    if(codigo) codigosSet.add(codigo);
+  }
+  if(Object.keys(map).length===0) throw new Error('SIN_FILAS');
+
+  return {
+    fileName, loadedAt:new Date().toISOString(),
+    map, salas:[...salasSet].sort(), codigos:[...codigosSet].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
+  };
+}
+
+function handleChecklistFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      checklist = parseChecklistWorkbook(e.target.result, file.name);
+      saveChecklistToStorage();
+      renderChecklistFileInfo();
+      renderSeguimiento();
+      renderRouteList();
+      if(activeRouteId) renderRouteDetail();
+      showToast('Checklist cargado: '+checklist.codigos.length+' códigos de ruta, '+checklist.salas.length+' sala(s).');
+    }catch(err){
+      console.error('Error parseando checklist', err);
+      let msg = 'No se pudo leer el archivo del checklist.';
+      if(err.message==='COLUMNAS_NO_ENCONTRADAS') msg = 'No se encontraron las columnas TRANSPORTE, CODIGO y SALA en la hoja "Checklist".';
+      else if(err.message==='SIN_FILAS') msg = 'El checklist no tiene filas de datos reconocibles.';
+      else if(err.message==='LIB_XLSX_NO_DISPONIBLE') msg = 'No se pudo cargar la librería para leer Excel desde internet. Revisa tu conexión e intenta de nuevo.';
+      showToast(msg);
+    }
+  };
+  reader.onerror = ()=> showToast('No se pudo leer el archivo seleccionado.');
+  reader.readAsArrayBuffer(file);
+}
+
+function renderChecklistFileInfo(){
+  const info = document.getElementById('checklistFileInfo');
+  const text = document.getElementById('checklistFileInfoText');
+  if(!checklist){ info.style.display='none'; return; }
+  info.style.display='block';
+  text.textContent = `Cargado: ${esc(checklist.fileName)} — ${Object.keys(checklist.map).length} transportes (${formatDate(checklist.loadedAt.slice(0,10))})`;
+}
+
+/* Busca en el checklist (Transporte -> Código/Sala) la info que corresponde a un transportId de ruta,
+   normalizando ambos lados a número para no fallar por ceros a la izquierda ('0000750676' vs '750676') */
+function getChecklistInfoForTransporte(transportId){
+  if(!checklist || !transportId) return null;
+  const target = parseInt(String(transportId).replace(/[^0-9]/g,''), 10);
+  if(isNaN(target)) return null;
+  if(!checklist._normIndex){
+    const idx = {};
+    Object.keys(checklist.map).forEach(k=>{
+      const n = parseInt(String(k).replace(/[^0-9]/g,''), 10);
+      if(!isNaN(n)) idx[n] = checklist.map[k];
+    });
+    checklist._normIndex = idx;
+  }
+  return checklist._normIndex[target] || null;
+}
+
+function normalizeTransporteNum(t){
+  const n = parseInt(String(t).replace(/[^0-9]/g,''), 10);
+  return isNaN(n) ? null : n;
+}
+
+/* Para una ruta cargada (JSON), busca en el reporte de ventas cuántos clientes le corresponden
+   (por transporte) y cuántos de esos ya están atendidos (entregados) según las rutas cargadas. */
+function getSalesStatsForRoute(route){
+  if(!salesReport || !route.transportId) return null;
+  const target = normalizeTransporteNum(route.transportId);
+  if(target===null) return null;
+  const visitMap = getClientVisitStatusMap();
+  let total = 0, atendidos = 0;
+  salesReport.clients.forEach(c=>{
+    const matches = c.transportes.some(t => normalizeTransporteNum(t)===target);
+    if(!matches) return;
+    total++;
+    const v = visitMap[c.code];
+    if(v && v.delivered) atendidos++;
+  });
+  if(total===0) return null;
+  return {total, atendidos, pct: (atendidos/total)*100};
+}
+
+/* Cruce: por cada cliente del reporte, revisa el estado de sus visitas en las rutas cargadas */
+function getClientVisitStatusMap(){
+  const map = {};
+  routes.forEach(r=>{
+    r.visits.forEach(v=>{
+      const code = parseInt(String(v.clientId||'').replace(/[^0-9]/g,''), 10);
+      if(isNaN(code)) return;
+      if(!map[code]) map[code] = {delivered:false, rejected:false, inProgress:false};
+      if(v.status==='DELIVERED') map[code].delivered = true;
+      else if(v.status==='REJECTED') map[code].rejected = true;
+      else if(v.status==='IN_PROGRESS') map[code].inProgress = true;
+    });
+  });
+  return map;
+}
+
+function buildSeguimientoList(){
+  if(!salesReport) return [];
+  const visitMap = getClientVisitStatusMap();
+  return salesReport.clients.map(c=>{
+    const v = visitMap[c.code];
+    let status;
+    if(!v) status = 'PENDIENTE';
+    else if(v.delivered) status = 'ATENDIDO';
+    else if(v.rejected) status = 'RECHAZADO';
+    else if(v.inProgress) status = 'EN_PROGRESO';
+    else status = 'PENDIENTE';
+
+    let codigos = [], salas = [];
+    if(checklist){
+      c.transportes.forEach(t=>{
+        const info = checklist.map[t];
+        if(info){
+          if(info.codigo) codigos.push(info.codigo);
+          if(info.sala) salas.push(info.sala);
+        }
+      });
+      codigos = [...new Set(codigos)];
+      salas = [...new Set(salas)];
+    }
+    return {...c, status, codigos, salas};
+  });
+}
+
+function translateSegStatus(s){
+  return s==='ATENDIDO'?'Atendido': s==='PENDIENTE'?'Pendiente': s==='RECHAZADO'?'Rechazado': s==='EN_PROGRESO'?'En progreso': s;
+}
+
+/* Estado de selección de los filtros multi-select */
+const segFilterState = {
+  status: new Set(),
+  transporte: new Set(),
+  codigo: new Set(),
+  sala: new Set()
+};
+
+function buildMultiSelect(key, btnId, panelId, options, labelAll, disabled, disabledTitle){
+  const btn = document.getElementById(btnId);
+  const panel = document.getElementById(panelId);
+
+  // Descartar selecciones que ya no existen entre las opciones actuales
+  const validValues = new Set(options.map(o=>o.value));
+  [...segFilterState[key]].forEach(v=>{ if(!validValues.has(v)) segFilterState[key].delete(v); });
+
+  btn.disabled = !!disabled;
+  btn.title = disabled ? (disabledTitle||'') : '';
+
+  panel.innerHTML = '';
+  if(options.length===0){
+    const empty = document.createElement('div');
+    empty.className = 'msel-empty';
+    empty.textContent = 'Sin opciones disponibles.';
+    panel.appendChild(empty);
+  }else{
+    const actions = document.createElement('div');
+    actions.className = 'msel-actions';
+    const selAll = document.createElement('span');
+    selAll.textContent = 'Seleccionar todos';
+    const selNone = document.createElement('span');
+    selNone.textContent = 'Limpiar';
+    actions.appendChild(selAll);
+    actions.appendChild(selNone);
+    panel.appendChild(actions);
+
+    options.forEach(opt=>{
+      const row = document.createElement('label');
+      row.className = 'msel-option';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = opt.value;
+      cb.checked = segFilterState[key].has(opt.value);
+      cb.addEventListener('change', ()=>{
+        if(cb.checked) segFilterState[key].add(opt.value); else segFilterState[key].delete(opt.value);
+        updateMultiSelectLabel(key, btn, labelAll, options.length);
+        filterAndRenderSeguimiento();
+      });
+      row.appendChild(cb);
+      row.appendChild(document.createTextNode(opt.label));
+      panel.appendChild(row);
+    });
+
+    selAll.addEventListener('click', ()=>{
+      options.forEach(o=>segFilterState[key].add(o.value));
+      panel.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=true);
+      updateMultiSelectLabel(key, btn, labelAll, options.length);
+      filterAndRenderSeguimiento();
+    });
+    selNone.addEventListener('click', ()=>{
+      segFilterState[key].clear();
+      panel.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false);
+      updateMultiSelectLabel(key, btn, labelAll, options.length);
+      filterAndRenderSeguimiento();
+    });
+  }
+
+  updateMultiSelectLabel(key, btn, labelAll, options.length);
+}
+
+function updateMultiSelectLabel(key, btn, labelAll, total){
+  const n = segFilterState[key].size;
+  if(n===0){ btn.textContent = labelAll; btn.classList.remove('has-selection'); }
+  else if(n===total){ btn.textContent = labelAll+' (todos)'; btn.classList.remove('has-selection'); }
+  else { btn.textContent = n+' seleccionado'+(n>1?'s':''); btn.classList.add('has-selection'); }
+}
+
+function renderSeguimiento(){
+  const empty = document.getElementById('seguimientoEmpty');
+  const content = document.getElementById('seguimientoContent');
+  renderSalesFileInfo();
+  renderChecklistFileInfo();
+
+  if(!salesReport){
+    empty.style.display='block'; content.style.display='none';
+    return;
+  }
+  empty.style.display='none'; content.style.display='block';
+
+  const list = buildSeguimientoList();
+  window._seguimientoList = list;
+
+  buildMultiSelect('status', 'segStatusBtn', 'segStatusPanel', [
+    {value:'ATENDIDO', label:'Atendido'},
+    {value:'PENDIENTE', label:'Pendiente (sin visita)'},
+    {value:'RECHAZADO', label:'Rechazado'},
+    {value:'EN_PROGRESO', label:'En progreso'}
+  ], 'Todos los estados', false);
+
+  const allTransportes = [...new Set(list.flatMap(c=>c.transportes))].sort();
+  buildMultiSelect('transporte', 'segTransporteBtn', 'segTransportePanel',
+    allTransportes.map(t=>({value:t, label:t})), 'Todos los transportes', false);
+
+  const allCodigos = [...new Set(list.flatMap(c=>c.codigos))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  buildMultiSelect('codigo', 'segCodigoBtn', 'segCodigoPanel',
+    allCodigos.map(c=>({value:c, label:c})), 'Todos los códigos', !checklist, 'Carga el checklist para filtrar por código de ruta');
+
+  const allSalas = [...new Set(list.flatMap(c=>c.salas))].sort();
+  buildMultiSelect('sala', 'segSalaBtn', 'segSalaPanel',
+    allSalas.map(s=>({value:s, label:s})), 'Todas las salas', !checklist, 'Carga el checklist para filtrar por sala');
+
+  filterAndRenderSeguimiento();
+}
+
+function getSeguimientoFilteredList(){
+  const list = window._seguimientoList || [];
+  const search = (document.getElementById('segSearch').value||'').toLowerCase();
+  const statusSel = segFilterState.status;
+  const transporteSel = segFilterState.transporte;
+  const codigoSel = segFilterState.codigo;
+  const salaSel = segFilterState.sala;
+
+  return list
+    .filter(c => !search || (c.name||'').toLowerCase().includes(search) || String(c.code).includes(search))
+    .filter(c => statusSel.size===0 || statusSel.has(c.status))
+    .filter(c => transporteSel.size===0 || c.transportes.some(t=>transporteSel.has(t)))
+    .filter(c => codigoSel.size===0 || c.codigos.some(x=>codigoSel.has(x)))
+    .filter(c => salaSel.size===0 || c.salas.some(x=>salaSel.has(x)));
+}
+
+function updateSeguimientoKpis(filteredList){
+  const total = filteredList.length;
+  const atendidos = filteredList.filter(c=>c.status==='ATENDIDO').length;
+  const pendientes = filteredList.filter(c=>c.status==='PENDIENTE').length;
+  const rechazados = filteredList.filter(c=>c.status==='RECHAZADO').length;
+  const enProgreso = filteredList.filter(c=>c.status==='EN_PROGRESO').length;
+  const totalSinFiltrar = (window._seguimientoList||[]).length;
+  const hayFiltro = total !== totalSinFiltrar;
+
+  document.getElementById('segKpiTotal').textContent = total;
+  document.getElementById('segKpiTotalSub').textContent = hayFiltro
+    ? `de ${totalSinFiltrar} en el reporte (filtro aplicado)`
+    : routes.length+' ruta(s) cargada(s) para comparar';
+  document.getElementById('segKpiAtendidos').textContent = atendidos;
+  document.getElementById('segKpiAtendidosSub').textContent = enProgreso+' en progreso';
+  document.getElementById('segKpiPendientes').textContent = pendientes;
+  document.getElementById('segKpiRechazados').textContent = rechazados;
+  document.getElementById('segKpiAvance').textContent = total>0 ? ((atendidos/total)*100).toFixed(1)+'%' : '0%';
+}
+
+function filterAndRenderSeguimiento(){
+  const filtered = getSeguimientoFilteredList();
+  window._seguimientoFilteredList = filtered;
+  updateSeguimientoKpis(filtered);
+
+  const tbody = document.getElementById('segTbody');
+  tbody.innerHTML = '';
+
+  filtered
+    .slice()
+    .sort((a,b)=> (a.status==='PENDIENTE'?0:1) - (b.status==='PENDIENTE'?0:1) || a.name.localeCompare(b.name))
+    .forEach(c=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${esc(c.name)}</td>
+        <td>${c.code}</td>
+        <td>${esc(c.transportes.join(', '))}</td>
+        <td>${esc(c.codigos.join(', '))||'-'}</td>
+        <td>${esc(c.salas.join(', '))||'-'}</td>
+        <td class="num">${c.lineCount}</td>
+        <td class="num">${c.totalFact.toFixed(2)}</td>
+        <td><span class="status-pill ${c.status}">${translateSegStatus(c.status)}</span></td>`;
+      tbody.appendChild(tr);
+    });
+}
+
+function exportSeguimientoExcel(){
+  const list = window._seguimientoFilteredList || window._seguimientoList || [];
+  if(list.length===0){ showToast('No hay datos de seguimiento para exportar (revisa los filtros aplicados).'); return; }
+  const rows = list
+    .slice()
+    .sort((a,b)=> (a.status==='PENDIENTE'?0:1) - (b.status==='PENDIENTE'?0:1) || a.name.localeCompare(b.name))
+    .map(c=>({
+      'Cliente': c.name,
+      'Código Cliente': c.code,
+      'Transporte(s)': c.transportes.join(', '),
+      'Código Ruta': c.codigos.join(', '),
+      'Sala': c.salas.join(', '),
+      'Líneas pedido': c.lineCount,
+      'Monto ref. (S/)': Number(c.totalFact.toFixed(2)),
+      'Estado': translateSegStatus(c.status)
+    }));
+  const baseName = 'seguimiento_clientes_'+new Date().toISOString().slice(0,10);
+
+  if(typeof XLSX === 'undefined'){
+    exportCsvOrTextFallback(rows, baseName);
+    return;
+  }
+  try{
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{wch:34},{wch:12},{wch:16},{wch:12},{wch:14},{wch:12},{wch:14},{wch:14}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Seguimiento');
+    XLSX.writeFile(wb, baseName+'.xlsx');
+  }catch(e){
+    console.error('Falló exportar seguimiento a Excel, se usa alternativa', e);
+    exportCsvOrTextFallback(rows, baseName);
+  }
+}
+
+
+function loadFromStorage(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    routes = raw ? JSON.parse(raw) : [];
+  }catch(e){
+    console.error('Error leyendo storage', e);
+    routes = [];
+  }
+}
+function saveToStorage(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(routes));
+  }catch(e){
+    showToast('No se pudo guardar en el almacenamiento local (¿espacio lleno?)');
+    console.error(e);
+  }
+  updateStorageInfo();
+}
+function updateStorageInfo(){
+  const raw = localStorage.getItem(STORAGE_KEY) || '';
+  const kb = (new Blob([raw]).size / 1024).toFixed(1);
+  document.getElementById('storageInfo').textContent = kb + ' KB guardados';
+}
+
+/* =========================================================
+   PARSEO DE ARCHIVOS
+   ========================================================= */
+function centsToSoles(v){ return (v||0)/100; }
+
+function esc(str){
+  if(str===null || str===undefined) return '';
+  return String(str).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function parseVisitsFile(json, fileName){
+  if(!Array.isArray(json) || json.length===0) return null;
+
+  const first = json[0];
+  const dates = json.map(v=>v.createdAt).filter(Boolean);
+  const minTs = Math.min(...dates);
+  const dateObj = new Date(minTs*1000);
+  const dateStr = dateObj.toISOString().slice(0,10);
+
+  let totalSales = 0;
+  let delivered=0, rejected=0, inProgress=0, other=0;
+  const products = {}; // sku -> {title,brand,category,qty,amount}
+  const clients = {};  // clientId -> {name, visits, delivered, rejected, amount}
+
+  const visits = json.map(v=>{
+    let visitAmount = 0;
+    let itemCount = 0;
+    (v.deliveryDetail||[]).forEach(det=>{
+      (det.deliveries||[]).forEach(dl=>{
+        if(dl.type === 'ORDER' || dl.type === 'TASK' || dl.type === 'BONUS' || dl.type === 'LOYALTY'){
+          visitAmount += (dl.amount||0);
+        }
+        (dl.productsSold||[]).forEach(p=>{
+          itemCount += (p.quantity||0);
+          const key = p.sku || p.title;
+          if(!products[key]){
+            products[key] = {title:p.title, brand:p.brand, category:p.categoryName, qty:0, amount:0};
+          }
+          products[key].qty += (p.quantity||0);
+          products[key].amount += (p.totalAmount||0);
+        });
+      });
+    });
+
+    if(v.status==='DELIVERED') delivered++;
+    else if(v.status==='REJECTED') rejected++;
+    else if(v.status==='IN_PROGRESS') inProgress++;
+    else other++;
+
+    totalSales += visitAmount;
+
+    const cKey = v.clientId || v.clientName;
+    if(!clients[cKey]){
+      clients[cKey] = {name:v.clientName, id:v.clientId, visits:0, delivered:0, rejected:0, pending:0, amount:0};
+    }
+    clients[cKey].visits++;
+    if(v.status==='DELIVERED') clients[cKey].delivered++;
+    if(v.status==='REJECTED') clients[cKey].rejected++;
+    if(v.status==='IN_PROGRESS') clients[cKey].pending++;
+    clients[cKey].amount += visitAmount;
+
+    return {
+      id:v.id,
+      clientId:v.clientId,
+      clientName:v.clientName,
+      status:v.status,
+      reason:v.reason,
+      location:v.location,
+      amount:visitAmount,
+      itemCount,
+      createdAt:v.createdAt
+    };
+  });
+
+  return {
+    routeId: (first.transportId||'') + '_' + dateStr + '_' + (first.employeeId||''),
+    fileName,
+    transportId: first.transportId,
+    employeeId: first.employeeId,
+    employeeName: first.employeeName,
+    externalId: first.externalId,
+    distributionCenterId: first.distributionCenterId,
+    countryCode: first.countryCode,
+    date: dateStr,
+    loadedAt: new Date().toISOString(),
+    totals:{
+      visits: json.length,
+      delivered, rejected, inProgress, other,
+      sales: centsToSoles(totalSales)
+    },
+    visits,
+    products: Object.values(products).map(p=>({...p, amount:centsToSoles(p.amount)})),
+    clients: Object.values(clients).map(c=>({...c, amount:centsToSoles(c.amount)}))
+  };
+}
+
+function handleFiles(fileList){
+  const files = Array.from(fileList);
+  if(files.length===0) return;
+  let added=0, dup=0, failed=0;
+  let pending = files.length;
+
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      try{
+        const json = JSON.parse(e.target.result);
+        const parsed = parseVisitsFile(json, file.name);
+        if(!parsed){ failed++; }
+        else{
+          const exists = routes.some(r=>r.routeId===parsed.routeId);
+          if(exists){ dup++; }
+          else{ routes.push(parsed); added++; }
+        }
+      }catch(err){
+        console.error('Error parseando', file.name, err);
+        failed++;
+      }
+      pending--;
+      if(pending===0){
+        routes.sort((a,b)=> b.date.localeCompare(a.date) || (a.employeeName||'').localeCompare(b.employeeName||''));
+        saveToStorage();
+        safeRender(renderAll);
+        let msg = added+' ruta(s) cargada(s)';
+        if(dup>0) msg += ', '+dup+' ya existían';
+        if(failed>0) msg += ', '+failed+' con error';
+        showToast(msg);
+      }
+    };
+    reader.onerror = ()=>{ failed++; pending--; };
+    reader.readAsText(file);
+  });
+}
+
+/* =========================================================
+   UI: SIDEBAR / LISTA DE RUTAS
+   ========================================================= */
+function renderRouteList(){
+  // Ya no hay lista visible en el sidebar; esta función ahora sincroniza
+  // el selector de rutas de la vista "Detalle de ruta".
+  const row = document.getElementById('routeSelectRow');
+  const select = document.getElementById('routeDetailSelect');
+  if(!row || !select) return;
+
+  if(routes.length===0){
+    row.style.display = 'none';
+    select.innerHTML = '';
+    return;
+  }
+  row.style.display = 'flex';
+
+  const currentValue = select.value;
+  select.innerHTML = routes.map(r=>{
+    const chkInfo = getChecklistInfoForTransporte(r.transportId);
+    const routeLabel = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
+    return `<option value="${esc(r.routeId)}">${formatDate(r.date)} — ${esc(routeLabel)}</option>`;
+  }).join('');
+
+  // Mantener seleccionada la ruta activa (o la ruta que ya estaba elegida en el select)
+  if(activeRouteId && routes.some(r=>r.routeId===activeRouteId)){
+    select.value = activeRouteId;
+  }else if(routes.some(r=>r.routeId===currentValue)){
+    select.value = currentValue;
+  }else{
+    select.value = routes[0].routeId;
+  }
+}
+
+function formatDate(iso){
+  const [y,m,d]=iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+/* =========================================================
+   VISTA: RESUMEN GENERAL
+   ========================================================= */
+function renderOverview(){
+  const empty = document.getElementById('overviewEmpty');
+  const content = document.getElementById('overviewContent');
+  if(routes.length===0){
+    empty.style.display='block'; content.style.display='none';
+    return;
+  }
+  empty.style.display='none'; content.style.display='block';
+
+  let totalVisits=0, rejected=0, inProgress=0;
+  routes.forEach(r=>{
+    totalVisits += r.totals.visits;
+    rejected += r.totals.rejected;
+    inProgress += r.totals.inProgress;
+  });
+
+  document.getElementById('kpiRoutes').textContent = routes.length;
+  const uniqueEmployees = new Set(routes.map(r=>r.employeeName)).size;
+  document.getElementById('kpiRoutesSub').textContent = uniqueEmployees+' vendedor(es)';
+
+  document.getElementById('kpiVisits').textContent = totalVisits;
+  document.getElementById('kpiVisitsSub').textContent = (totalVisits/routes.length).toFixed(1)+' visitas/ruta en promedio';
+
+  let avanceSum = 0, avanceCount = 0;
+  routes.forEach(r=>{
+    const stats = getSalesStatsForRoute(r);
+    if(stats){ avanceSum += stats.pct; avanceCount++; }
+  });
+  if(avanceCount>0){
+    document.getElementById('kpiEffect').textContent = (avanceSum/avanceCount).toFixed(1)+'%';
+    document.getElementById('kpiEffectSub').textContent = 'Promedio de '+avanceCount+' ruta(s) con reporte';
+  }else{
+    document.getElementById('kpiEffect').textContent = '—';
+    document.getElementById('kpiEffectSub').textContent = 'Carga el reporte de ventas para calcularlo';
+  }
+
+  document.getElementById('kpiRejected').textContent = rejected;
+  document.getElementById('kpiRejectedSub').textContent = inProgress+' aún en progreso';
+
+  renderChoferesTable();
+}
+
+function safeRender(fn){
+  try{ fn(); }catch(e){ console.error('Error de renderizado (no crítico):', e); }
+}
+
+function renderChoferesTable(){
+  const tbody = document.getElementById('choferesTbody');
+  tbody.innerHTML = '';
+  routes.forEach(r=>{
+    const chkInfo = getChecklistInfoForTransporte(r.transportId);
+    const routeLabel = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
+    const salesStats = getSalesStatsForRoute(r);
+
+    // El total "programado" viene del reporte de ventas (clientes asignados a este transporte);
+    // los ya atendidos se calculan cruzando contra las visitas de los JSON cargados.
+    // Si no hay reporte de ventas cargado, se usa como respaldo el total de visitas del propio JSON.
+    const total = salesStats ? salesStats.total : (r.totals.visits || 0);
+    const delivered = salesStats ? salesStats.atendidos : (r.totals.delivered || 0);
+    const pct = total>0 ? (delivered/total)*100 : 0;
+    const isFull = total>0 && delivered===total;
+
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    if(r.totals.rejected>0) tr.className = 'row-alert';
+    tr.innerHTML = `
+      <td class="chofer-cell">
+        <div class="c-name">${esc(r.employeeName||'s/n')}</div>
+        <div class="c-sub">${esc(r.externalId || r.transportId || '-')}</div>
+      </td>
+      <td>${esc(routeLabel)}</td>
+      <td>
+        <div class="visita-row">
+          <div class="visita-track"><div class="visita-fill${isFull?' full':''}" style="width:${pct.toFixed(1)}%"></div></div>
+          <span class="visita-label">${delivered}/${total}</span>
+        </div>
+      </td>
+      <td class="num">${salesStats ? salesStats.pct.toFixed(1)+'%' : '—'}</td>`;
+    tr.addEventListener('click', ()=>{
+      activeRouteId = r.routeId;
+      switchView('routeDetail');
+      renderRouteList();
+      renderRouteDetail();
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+/* =========================================================
+   VISTA: DETALLE DE RUTA
+   ========================================================= */
+function renderRouteDetail(){
+  const empty = document.getElementById('routeDetailEmpty');
+  const content = document.getElementById('routeDetailContent');
+  const route = routes.find(r=>r.routeId===activeRouteId);
+
+  if(!route){
+    empty.style.display='block'; content.style.display='none';
+    return;
+  }
+  empty.style.display='none'; content.style.display='block';
+
+  const chkInfo = getChecklistInfoForTransporte(route.transportId);
+  const routeLabel = chkInfo && chkInfo.codigo ? chkInfo.codigo : (route.transportId || 's/n');
+  document.getElementById('rdClientTitle').textContent = `Ruta ${formatDate(route.date)} — ${routeLabel}`;
+  document.getElementById('rdMeta1').textContent = `Centro de distribución: ${route.distributionCenterId||'-'}`;
+  document.getElementById('rdMeta2').textContent = `Transporte: ${route.transportId||'-'}`;
+  document.getElementById('rdMeta3').textContent = `Archivo: ${route.fileName}`;
+  document.getElementById('rdMeta4').textContent = chkInfo && chkInfo.sala ? `Sala: ${chkInfo.sala}` : '';
+
+  document.getElementById('rdKpiVisits').textContent = route.totals.visits;
+  document.getElementById('rdKpiOk').textContent = route.totals.delivered;
+  document.getElementById('rdKpiBad').textContent = route.totals.rejected;
+  document.getElementById('rdKpiSales').textContent = route.totals.sales.toFixed(2);
+
+  safeRender(()=>renderRouteMap(route));
+  renderRouteVisitsTable(route);
+}
+
+function renderRouteMap(route){
+  const container = document.getElementById('routeMap');
+  if(leafletMap){ try{ leafletMap.remove(); }catch(e){} leafletMap=null; }
+
+  if(typeof L === 'undefined'){
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">No se pudo cargar el mapa desde internet (librería bloqueada). La tabla de visitas de abajo sigue disponible con todos los datos.</div>';
+    return;
+  }
+
+  const withLoc = route.visits.filter(v=>v.location && typeof v.location.lat==='number');
+  if(withLoc.length===0){
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin coordenadas disponibles para esta ruta.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  const avgLat = withLoc.reduce((s,v)=>s+v.location.lat,0)/withLoc.length;
+  const avgLng = withLoc.reduce((s,v)=>s+v.location.lng,0)/withLoc.length;
+
+  leafletMap = L.map(container, {scrollWheelZoom:true}).setView([avgLat, avgLng], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap contributors', maxZoom:19
+  }).addTo(leafletMap);
+
+  const colorFor = s => s==='DELIVERED' ? '#3fae66' : s==='REJECTED' ? '#d15b5b' : '#d1a83f';
+  const bounds = [];
+  withLoc.forEach((v,i)=>{
+    const marker = L.circleMarker([v.location.lat, v.location.lng], {
+      radius:7, color:colorFor(v.status), fillColor:colorFor(v.status), fillOpacity:.85, weight:1.5
+    }).addTo(leafletMap);
+    marker.bindPopup(`<b>${esc(v.clientName)}</b><br>${esc(v.status)}${v.reason?(' ('+esc(v.reason)+')'):''}<br>S/ ${v.amount.toFixed(2)}`);
+    bounds.push([v.location.lat, v.location.lng]);
+  });
+  if(bounds.length>1) leafletMap.fitBounds(bounds, {padding:[30,30]});
+}
+
+function renderRouteVisitsTable(route){
+  const filter = document.getElementById('rdStatusFilter').value;
+  const tbody = document.getElementById('rdVisitsTbody');
+  tbody.innerHTML='';
+  route.visits
+    .filter(v=> !filter || v.status===filter)
+    .forEach((v,i)=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td>${esc(v.clientName)}</td>
+        <td>${esc(v.clientId||'-')}</td>
+        <td><span class="status-pill ${esc(v.status)}">${translateStatus(v.status)}</span></td>
+        <td>${esc(v.reason||'-')}</td>
+        <td class="num">${v.amount.toFixed(2)}</td>
+        <td class="num">${v.itemCount}</td>`;
+      tbody.appendChild(tr);
+    });
+}
+function translateStatus(s){
+  return s==='DELIVERED'?'Entregado': s==='REJECTED'?'Rechazado': s==='IN_PROGRESS'?'En progreso': s;
+}
+
+/* =========================================================
+   VISTA: PRODUCTOS
+   ========================================================= */
+function renderProducts(){
+  const empty = document.getElementById('productsEmpty');
+  const content = document.getElementById('productsContent');
+  if(routes.length===0){ empty.style.display='block'; content.style.display='none'; return; }
+  empty.style.display='none'; content.style.display='block';
+
+  const agg = {};
+  routes.forEach(r=>{
+    r.products.forEach(p=>{
+      const key = p.title+'|'+p.brand;
+      if(!agg[key]) agg[key] = {title:p.title, brand:p.brand, category:p.category, qty:0, amount:0};
+      agg[key].qty += p.qty;
+      agg[key].amount += p.amount;
+    });
+  });
+  const list = Object.values(agg).sort((a,b)=>b.amount-a.amount);
+
+  const catSelect = document.getElementById('categoryFilter');
+  const cats = [...new Set(list.map(p=>p.category).filter(Boolean))].sort();
+  const currentCat = catSelect.value;
+  catSelect.innerHTML = '<option value="">Todas las categorías</option>' + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  catSelect.value = currentCat;
+
+  window._productList = list;
+  filterAndRenderProducts();
+}
+
+function filterAndRenderProducts(){
+  const list = window._productList || [];
+  const search = (document.getElementById('productSearch').value||'').toLowerCase();
+  const cat = document.getElementById('categoryFilter').value;
+  const tbody = document.getElementById('productsTbody');
+  tbody.innerHTML = '';
+  list
+    .filter(p => (!search || (p.title||'').toLowerCase().includes(search) || (p.brand||'').toLowerCase().includes(search)))
+    .filter(p => (!cat || p.category===cat))
+    .forEach(p=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(p.title)}</td><td>${esc(p.brand||'-')}</td><td>${esc(p.category||'-')}</td><td class="num">${p.qty}</td><td class="num">${p.amount.toFixed(2)}</td>`;
+      tbody.appendChild(tr);
+    });
+}
+
+/* =========================================================
+   VISTA: CLIENTES
+   ========================================================= */
+function renderClients(){
+  const empty = document.getElementById('clientsEmpty');
+  const content = document.getElementById('clientsContent');
+  if(routes.length===0){ empty.style.display='block'; content.style.display='none'; return; }
+  empty.style.display='none'; content.style.display='block';
+
+  const agg = {};
+  routes.forEach(r=>{
+    r.clients.forEach(c=>{
+      const key = c.id || c.name;
+      if(!agg[key]) agg[key] = {name:c.name, id:c.id, visits:0, delivered:0, rejected:0, pending:0, amount:0};
+      agg[key].visits += c.visits;
+      agg[key].delivered += c.delivered;
+      agg[key].rejected += c.rejected;
+      agg[key].pending += (c.pending||0);
+      agg[key].amount += c.amount;
+    });
+  });
+  window._clientList = Object.values(agg).sort((a,b)=> b.pending-a.pending || b.amount-a.amount);
+  filterAndRenderClients();
+}
+function filterAndRenderClients(){
+  const list = window._clientList || [];
+  const search = (document.getElementById('clientSearch').value||'').toLowerCase();
+  const onlyPending = document.getElementById('onlyPendingChk').checked;
+  const tbody = document.getElementById('clientsTbody');
+  tbody.innerHTML='';
+
+  const withPending = list.filter(c=>c.pending>0);
+  document.getElementById('kpiClientsPending').textContent = withPending.length;
+  document.getElementById('kpiClientsPendingSub').textContent = withPending.reduce((s,c)=>s+c.pending,0)+' visita(s) pendiente(s) en total';
+
+  list
+    .filter(c => !search || (c.name||'').toLowerCase().includes(search) || (c.id||'').toLowerCase().includes(search))
+    .filter(c => !onlyPending || c.pending>0)
+    .forEach(c=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(c.name)}</td><td>${esc(c.id||'-')}</td><td class="num">${c.visits}</td><td class="num">${c.delivered}</td><td class="num">${c.rejected}</td><td class="num">${c.pending>0 ? `<span class="status-pill IN_PROGRESS">${c.pending}</span>` : '0'}</td><td class="num">${c.amount.toFixed(2)}</td>`;
+      tbody.appendChild(tr);
+    });
+}
+
+/* =========================================================
+   NAVEGACIÓN / TABS
+   ========================================================= */
+function switchView(name){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
+  if(name==='overview') renderOverview();
+  if(name==='routeDetail'){
+    // Si no hay ruta activa pero sí rutas cargadas, usa la que ya esté elegida en el selector
+    if(!activeRouteId && routes.length>0){
+      const select = document.getElementById('routeDetailSelect');
+      activeRouteId = (select && select.value) ? select.value : routes[0].routeId;
+    }
+    renderRouteList();
+    renderRouteDetail();
+  }
+  if(name==='products') renderProducts();
+  if(name==='clients') renderClients();
+  if(name==='seguimiento') renderSeguimiento();
+}
+
+function renderAll(){
+  renderRouteList();
+  const activeTab = document.querySelector('.tab-btn.active');
+  switchView(activeTab ? activeTab.dataset.view : 'overview');
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+/* =========================================================
+   EVENTOS
+   ========================================================= */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>switchView(btn.dataset.view));
+});
+
+const uploadBtnSmall = document.getElementById('uploadBtnSmall');
+const fileInput = document.getElementById('fileInput');
+uploadBtnSmall.addEventListener('click', ()=>fileInput.click());
+fileInput.addEventListener('change', e=>{ handleFiles(e.target.files); fileInput.value=''; });
+
+document.getElementById('routeDetailSelect').addEventListener('change', (e)=>{
+  activeRouteId = e.target.value;
+  renderRouteDetail();
+});
+document.getElementById('deleteActiveRouteBtn').addEventListener('click', ()=>{
+  if(!activeRouteId) return;
+  if(confirm('¿Eliminar esta ruta del almacenamiento local?')){
+    routes = routes.filter(r=>r.routeId!==activeRouteId);
+    activeRouteId = routes.length>0 ? routes[0].routeId : null;
+    saveToStorage();
+    renderAll();
+  }
+});
+
+const salesUploadZone = document.getElementById('salesUploadZone');
+const salesFileInput = document.getElementById('salesFileInput');
+salesUploadZone.addEventListener('click', ()=>salesFileInput.click());
+salesFileInput.addEventListener('change', e=>{
+  if(e.target.files && e.target.files[0]) handleSalesFile(e.target.files[0]);
+  salesFileInput.value='';
+});
+salesUploadZone.addEventListener('dragover', e=>{ e.preventDefault(); salesUploadZone.classList.add('dragover'); });
+salesUploadZone.addEventListener('dragleave', ()=> salesUploadZone.classList.remove('dragover'));
+salesUploadZone.addEventListener('drop', e=>{
+  e.preventDefault();
+  salesUploadZone.classList.remove('dragover');
+  if(e.dataTransfer.files && e.dataTransfer.files[0]) handleSalesFile(e.dataTransfer.files[0]);
+});
+document.getElementById('salesFileRemove').addEventListener('click', ()=>{
+  if(confirm('¿Quitar el reporte de ventas cargado?')){
+    salesReport = null;
+    saveSalesToStorage();
+    renderSeguimiento();
+    renderRouteList();
+    showToast('Reporte de ventas quitado.');
+  }
+});
+
+const checklistUploadZone = document.getElementById('checklistUploadZone');
+const checklistFileInput = document.getElementById('checklistFileInput');
+checklistUploadZone.addEventListener('click', ()=>checklistFileInput.click());
+checklistFileInput.addEventListener('change', e=>{
+  if(e.target.files && e.target.files[0]) handleChecklistFile(e.target.files[0]);
+  checklistFileInput.value='';
+});
+checklistUploadZone.addEventListener('dragover', e=>{ e.preventDefault(); checklistUploadZone.classList.add('dragover'); });
+checklistUploadZone.addEventListener('dragleave', ()=> checklistUploadZone.classList.remove('dragover'));
+checklistUploadZone.addEventListener('drop', e=>{
+  e.preventDefault();
+  checklistUploadZone.classList.remove('dragover');
+  if(e.dataTransfer.files && e.dataTransfer.files[0]) handleChecklistFile(e.dataTransfer.files[0]);
+});
+document.getElementById('checklistFileRemove').addEventListener('click', ()=>{
+  if(confirm('¿Quitar el checklist cargado? Los filtros de Código y Sala dejarán de estar disponibles.')){
+    checklist = null;
+    saveChecklistToStorage();
+    renderSeguimiento();
+    renderRouteList();
+    if(activeRouteId) renderRouteDetail();
+    showToast('Checklist quitado.');
+  }
+});
+
+document.getElementById('segSearch').addEventListener('input', filterAndRenderSeguimiento);
+document.getElementById('exportSeguimientoExcelBtn').addEventListener('click', exportSeguimientoExcel);
+
+// Toggle de los paneles de selección múltiple (Estado / Transporte / Código / Sala)
+document.querySelectorAll('.msel-btn').forEach(btn=>{
+  btn.addEventListener('click', e=>{
+    e.stopPropagation();
+    if(btn.disabled) return;
+    const panel = btn.nextElementSibling;
+    const isOpen = panel.classList.contains('open');
+    document.querySelectorAll('.msel-panel.open').forEach(p=>p.classList.remove('open'));
+    if(!isOpen) panel.classList.add('open');
+  });
+});
+document.addEventListener('click', ()=>{
+  document.querySelectorAll('.msel-panel.open').forEach(p=>p.classList.remove('open'));
+});
+document.querySelectorAll('.msel-panel').forEach(panel=>{
+  panel.addEventListener('click', e=>e.stopPropagation());
+});
+
+
+document.getElementById('clearAllBtn').addEventListener('click', ()=>{
+  if(routes.length===0) return;
+  if(confirm('¿Borrar todas las rutas cargadas del almacenamiento local? Esta acción no se puede deshacer.')){
+    routes = [];
+    activeRouteId = null;
+    saveToStorage();
+    renderAll();
+    showToast('Se borraron todas las rutas.');
+  }
+});
+
+document.getElementById('exportAllBtn').addEventListener('click', ()=>{
+  if(routes.length===0){ showToast('No hay rutas para exportar.'); return; }
+  const jsonStr = JSON.stringify(routes, null, 2);
+  try{
+    const blob = new Blob([jsonStr], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'rutas_consolidado_'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 1500);
+  }catch(e){
+    console.error('La descarga automática fue bloqueada, se muestra alternativa de texto', e);
+    exportAsTextFallback(jsonStr);
+  }
+});
+
+document.getElementById('exportTextBtn').addEventListener('click', ()=>{
+  if(routes.length===0){ showToast('No hay rutas para exportar.'); return; }
+  exportAsTextFallback(JSON.stringify(routes, null, 2));
+});
+
+function exportAsTextFallback(jsonStr){
+  const win = window.open('', '_blank');
+  if(!win){
+    showToast('El navegador bloqueó tanto la descarga como las ventanas nuevas. Habilita ventanas emergentes o pide a soporte técnico que permita descargar archivos desde esta página.');
+    return;
+  }
+  win.document.title = 'Datos de rutas — copiar manualmente';
+  const pre = win.document.createElement('pre');
+  pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:12px;padding:20px;';
+  pre.textContent = jsonStr;
+  win.document.body.style.cssText = 'margin:0;background:#f4f4f4;';
+  const hint = win.document.createElement('div');
+  hint.style.cssText = 'position:sticky;top:0;background:#222;color:#fff;padding:10px 20px;font-family:sans-serif;font-size:13px;';
+  hint.textContent = 'Selecciona todo el texto (Ctrl+A) y cópialo (Ctrl+C), o guarda esta página (Ctrl+S) como archivo .json / .txt.';
+  win.document.body.appendChild(hint);
+  win.document.body.appendChild(pre);
+}
+
+/* =========================================================
+   EXPORTAR CLIENTES ATENDIDOS A EXCEL
+   ========================================================= */
+function getAttendedClients(){
+  const agg = {};
+  routes.forEach(r=>{
+    r.clients.forEach(c=>{
+      const key = c.id || c.name;
+      if(!agg[key]) agg[key] = {name:c.name, id:c.id, visits:0, delivered:0, rejected:0, pending:0, amount:0};
+      agg[key].visits += c.visits;
+      agg[key].delivered += c.delivered;
+      agg[key].rejected += c.rejected;
+      agg[key].pending += (c.pending||0);
+      agg[key].amount += c.amount;
+    });
+  });
+  // "Atendidos" = clientes con al menos una visita entregada
+  return Object.values(agg).filter(c=>c.delivered>0).sort((a,b)=>b.amount-a.amount);
+}
+
+function clientsToRows(list){
+  return list.map(c=>({
+    'Cliente': c.name,
+    'Código': c.id||'',
+    'Visitas': c.visits,
+    'Entregadas': c.delivered,
+    'Rechazadas': c.rejected,
+    'Pendientes': c.pending,
+    'Compra total (S/)': Number(c.amount.toFixed(2))
+  }));
+}
+
+function csvEscape(v){
+  v = (v===null||v===undefined) ? '' : String(v);
+  if(v.includes(',') || v.includes('"') || v.includes('\n')){
+    v = '"'+v.replace(/"/g,'""')+'"';
+  }
+  return v;
+}
+
+function rowsToCsv(rows){
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.join(',')];
+  rows.forEach(r=> lines.push(headers.map(h=>csvEscape(r[h])).join(',')) );
+  return lines.join('\n');
+}
+
+function downloadTextFile(content, filename, mime){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 1500);
+}
+
+function exportCsvOrTextFallback(rows, baseName){
+  const csvStr = rowsToCsv(rows);
+  try{
+    downloadTextFile('\uFEFF'+csvStr, baseName+'.csv', 'text/csv;charset=utf-8;');
+    showToast('No se pudo generar el Excel (.xlsx); se descargó un .csv que también abre en Excel.');
+  }catch(e){
+    console.error('También falló la descarga CSV, se muestra alternativa de texto', e);
+    const win = window.open('', '_blank');
+    if(!win){
+      showToast('El navegador bloqueó la descarga y las ventanas emergentes. Pide a soporte técnico que habilite descargas en esta página.');
+      return;
+    }
+    win.document.title = 'Clientes atendidos — copiar manualmente';
+    win.document.body.style.cssText = 'margin:0;background:#f4f4f4;';
+    const hint = win.document.createElement('div');
+    hint.style.cssText = 'position:sticky;top:0;background:#222;color:#fff;padding:10px 20px;font-family:sans-serif;font-size:13px;';
+    hint.textContent = 'Copia este texto (Ctrl+A, Ctrl+C) y pégalo en Excel (Datos > Desde texto también funciona), o guarda esta página como .csv (Ctrl+S).';
+    const pre = win.document.createElement('pre');
+    pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;font-family:monospace;font-size:12px;padding:20px;';
+    pre.textContent = csvStr;
+    win.document.body.appendChild(hint);
+    win.document.body.appendChild(pre);
+  }
+}
+
+function exportClientsExcel(){
+  const list = getAttendedClients();
+  if(list.length===0){ showToast('Todavía no hay clientes atendidos (entregados) para exportar.'); return; }
+  const rows = clientsToRows(list);
+  const baseName = 'clientes_atendidos_'+new Date().toISOString().slice(0,10);
+
+  if(typeof XLSX === 'undefined'){
+    exportCsvOrTextFallback(rows, baseName);
+    return;
+  }
+  try{
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{wch:34},{wch:14},{wch:9},{wch:11},{wch:11},{wch:11},{wch:18}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes atendidos');
+    XLSX.writeFile(wb, baseName+'.xlsx');
+  }catch(e){
+    console.error('Falló la exportación a Excel, se usa alternativa CSV/texto', e);
+    exportCsvOrTextFallback(rows, baseName);
+  }
+}
+
+document.getElementById('exportClientsExcelBtn').addEventListener('click', exportClientsExcel);
+
+document.getElementById('rdStatusFilter').addEventListener('change', ()=>{
+  const route = routes.find(r=>r.routeId===activeRouteId);
+  if(route) renderRouteVisitsTable(route);
+});
+document.getElementById('productSearch').addEventListener('input', filterAndRenderProducts);
+document.getElementById('categoryFilter').addEventListener('change', filterAndRenderProducts);
+document.getElementById('clientSearch').addEventListener('input', filterAndRenderClients);
+document.getElementById('onlyPendingChk').addEventListener('change', filterAndRenderClients);
+
+/* =========================================================
+   INIT
+   ========================================================= */
+loadFromStorage();
+loadSalesFromStorage();
+loadChecklistFromStorage();
+updateStorageInfo();
+renderAll();
+</script>
+</body>
+</html>
