@@ -406,6 +406,14 @@
   .status-pill.EN_PROGRESO{background:rgba(209,168,63,.15);color:var(--yellow);}
 
   #routeMap{height:360px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);}
+  #allRoutesMap{height:420px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);margin-bottom:16px;}
+
+  .map-legends{display:block;}
+  .map-legend-title{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-dim);margin-bottom:8px;}
+  .map-legend-items{display:flex;flex-wrap:wrap;gap:10px 16px;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);}
+  .legend-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+  .legend-ring{width:11px;height:11px;border-radius:50%;border-width:3px;border-style:solid;background:transparent;flex-shrink:0;box-sizing:border-box;}
 
   .route-detail-header{
     display:flex;
@@ -512,6 +520,9 @@
 
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
   @media(max-width:900px){.two-col{grid-template-columns:1fr;}}
+  .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:20px;}
+  @media(max-width:1100px){.three-col{grid-template-columns:1fr 1fr;}}
+  @media(max-width:700px){.three-col{grid-template-columns:1fr;}}
 
   .bar-track{
     height:8px;background:#2b2f38;border-radius:4px;overflow:hidden;margin-top:6px;
@@ -532,6 +543,8 @@
   tr.row-alert td{background:rgba(209,91,91,0.07);}
   .chofer-cell .c-name{font-weight:600;font-size:13px;}
   .chofer-cell .c-sub{font-size:11px;color:var(--text-dim);margin-top:1px;}
+  .chofer-del{cursor:pointer;opacity:.6;font-size:13px;padding:4px;}
+  .chofer-del:hover{opacity:1;}
 
   a.file-link{color:var(--blue);text-decoration:none;}
   a.file-link:hover{text-decoration:underline;}
@@ -545,6 +558,26 @@
     z-index:100;
   }
   #toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+  .confirm-modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.55);
+    display:flex;align-items:center;justify-content:center;
+    z-index:200;padding:20px;
+  }
+  .confirm-modal{
+    background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);
+    padding:20px 22px;max-width:380px;width:100%;
+    box-shadow:0 12px 32px rgba(0,0,0,.5);
+  }
+  .confirm-modal-text{font-size:13.5px;color:var(--text);margin-bottom:18px;line-height:1.5;}
+  .confirm-modal-actions{display:flex;justify-content:flex-end;gap:10px;}
+  .confirm-modal-btn{
+    background:none;border:1px solid var(--border);color:var(--text-dim);
+    padding:7px 14px;border-radius:7px;font-size:12.5px;cursor:pointer;
+  }
+  .confirm-modal-btn:hover{color:var(--text);border-color:var(--text-dim);}
+  .confirm-modal-btn-danger{background:rgba(209,91,91,.15);border-color:var(--red);color:var(--red);}
+  .confirm-modal-btn-danger:hover{background:rgba(209,91,91,.25);}
 </style>
 </head>
 <body>
@@ -558,6 +591,7 @@
     <button class="tab-btn" data-view="products">Productos</button>
     <button class="tab-btn" data-view="clients">Clientes</button>
     <button class="tab-btn" data-view="seguimiento">Seguimiento vs. Reporte Ventas</button>
+    <button class="tab-btn" data-view="importar">Importar</button>
   </div>
 
   <!-- OVERVIEW -->
@@ -612,10 +646,39 @@
         <h3>Choferes y avance por ruta</h3>
         <table>
           <thead><tr>
-            <th>Chofer</th><th>Ruta</th><th>Visitas</th><th class="num">Avance reporte</th>
+            <th>Chofer</th><th>Ruta</th><th>Visitas</th><th class="num">Avance reporte</th><th class="num"></th>
           </tr></thead>
           <tbody id="choferesTbody"></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="filter-row" style="margin-bottom:12px;">
+        <h3 style="margin:0;">Mapa consolidado de rutas</h3>
+        <div class="msel" id="mapSalaMsel" style="margin-left:auto;">
+          <button type="button" class="msel-btn" id="mapSalaFilterBtn">Todas las salas</button>
+          <div class="msel-panel" id="mapSalaFilterPanel"></div>
+        </div>
+        <div class="msel" id="mapRouteMsel">
+          <button type="button" class="msel-btn" id="mapRouteFilterBtn">Todas las rutas</button>
+          <div class="msel-panel" id="mapRouteFilterPanel"></div>
+        </div>
+        <select id="mapColorModeSelect">
+          <option value="status">Leyenda: Status</option>
+          <option value="route">Leyenda: Por Ruta</option>
+        </select>
+      </div>
+      <div id="allRoutesMap"></div>
+      <div class="map-legends">
+        <div class="map-legend" id="statusLegendWrap">
+          <div class="map-legend-title">Leyenda — Estado</div>
+          <div class="map-legend-items" id="statusLegend"></div>
+        </div>
+        <div class="map-legend" id="routeLegendWrap" style="display:none;">
+          <div class="map-legend-title">Leyenda — Ruta</div>
+          <div class="map-legend-items" id="routeLegend"></div>
+        </div>
       </div>
     </div>
 
@@ -746,40 +809,12 @@
   <!-- SEGUIMIENTO VS REPORTE DE VENTAS -->
   <div class="view" id="view-seguimiento">
     <h2 class="view-title">Seguimiento vs. Reporte de Ventas</h2>
-    <div class="view-sub">Carga el reporte de ventas (Excel/SAP) del día para ver qué clientes ya fueron atendidos y cuáles siguen pendientes.</div>
-
-    <div class="two-col" style="margin-bottom:20px;">
-      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
-        <h3 style="margin-bottom:8px;font-size:12.5px;">Reporte de ventas</h3>
-        <div id="salesUploadZone" class="upload-zone compact" style="margin:0;">
-          <div class="icon">📊</div>
-          <div class="txt"><b>Cargar Reporte de Ventas</b><br>Archivo .xlsx exportado (hoja "Sheet1")</div>
-        </div>
-        <input type="file" id="salesFileInput" accept=".xlsx,.xls" style="display:none;">
-        <div id="salesFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
-          <span id="salesFileInfoText"></span>
-          <span id="salesFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
-        </div>
-      </div>
-
-      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
-        <h3 style="margin-bottom:8px;font-size:12.5px;">Checklist de rutas (Código / Sala)</h3>
-        <div id="checklistUploadZone" class="upload-zone compact" style="margin:0;">
-          <div class="icon">🗂️</div>
-          <div class="txt"><b>Cargar Checklist</b><br>Archivo .xlsx con hoja "Checklist" (Transporte, Código, Sala)</div>
-        </div>
-        <input type="file" id="checklistFileInput" accept=".xlsx,.xls" style="display:none;">
-        <div id="checklistFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
-          <span id="checklistFileInfoText"></span>
-          <span id="checklistFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
-        </div>
-      </div>
-    </div>
+    <div class="view-sub">Compara cada cliente del reporte de ventas contra las visitas registradas en las rutas cargadas.</div>
 
     <div id="seguimientoEmpty" class="placeholder-big">
       <div class="icon">📊</div>
       <h3>Sube el reporte de ventas para comparar</h3>
-      <p>Se compara cada cliente del reporte contra las visitas de todas las rutas (JSON) que ya cargaste. Si el cliente aparece como entregado, se marca "Atendido"; si no aparece en ninguna ruta, se marca "Pendiente". El checklist es opcional: si lo cargas, podrás filtrar por Código de ruta y por Sala.</p>
+      <p>Ve a la pestaña "Importar" para cargar el reporte de ventas. Se compara cada cliente del reporte contra las visitas de todas las rutas (JSON) que ya cargaste. Si el cliente aparece como entregado, se marca "Atendido"; si no aparece en ninguna ruta, se marca "Pendiente". El checklist es opcional: si lo cargas, podrás filtrar por Código de ruta y por Sala.</p>
     </div>
 
     <div id="seguimientoContent" style="display:none;">
@@ -843,9 +878,66 @@
     </div>
   </div>
 
+  <!-- IMPORTAR -->
+  <div class="view" id="view-importar">
+    <h2 class="view-title">Importar</h2>
+    <div class="view-sub">Carga aquí los archivos de referencia: reporte de ventas, checklist de rutas y maestro de clientes.</div>
+
+    <div class="three-col">
+      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
+        <h3 style="margin-bottom:8px;font-size:12.5px;">Reporte de ventas</h3>
+        <div id="salesUploadZone" class="upload-zone compact" style="margin:0;">
+          <div class="icon">📊</div>
+          <div class="txt"><b>Cargar Reporte de Ventas</b><br>Archivo .xlsx exportado (hoja "Sheet1")</div>
+        </div>
+        <input type="file" id="salesFileInput" accept=".xlsx,.xls" style="display:none;">
+        <div id="salesFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
+          <span id="salesFileInfoText"></span>
+          <span id="salesFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
+        <h3 style="margin-bottom:8px;font-size:12.5px;">Checklist de rutas (Código / Sala)</h3>
+        <div id="checklistUploadZone" class="upload-zone compact" style="margin:0;">
+          <div class="icon">🗂️</div>
+          <div class="txt"><b>Cargar Checklist</b><br>Archivo .xlsx con hoja "Checklist" (Transporte, Código, Sala)</div>
+        </div>
+        <input type="file" id="checklistFileInput" accept=".xlsx,.xls" style="display:none;">
+        <div id="checklistFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
+          <span id="checklistFileInfoText"></span>
+          <span id="checklistFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
+        <h3 style="margin-bottom:8px;font-size:12.5px;">Maestro de Clientes</h3>
+        <div id="maestroUploadZone" class="upload-zone compact" style="margin:0;">
+          <div class="icon">🧾</div>
+          <div class="txt"><b>Cargar Maestro de Clientes</b><br>Archivo .xlsx (Cliente, Nombre 1, BZIRK, coordenadas...)</div>
+        </div>
+        <input type="file" id="maestroFileInput" accept=".xlsx,.xls" style="display:none;">
+        <div id="maestroFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
+          <span id="maestroFileInfoText"></span>
+          <span id="maestroFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div id="toast"></div>
+
+<div id="confirmModal" class="confirm-modal-overlay" style="display:none;">
+  <div class="confirm-modal">
+    <div class="confirm-modal-text" id="confirmModalText"></div>
+    <div class="confirm-modal-actions">
+      <button id="confirmModalCancel" class="confirm-modal-btn">Cancelar</button>
+      <button id="confirmModalOk" class="confirm-modal-btn confirm-modal-btn-danger">Confirmar</button>
+    </div>
+  </div>
+</div>
 
 <script>
 /* =========================================================
@@ -855,6 +947,7 @@ const STORAGE_KEY = 'jrgrodval_rutas_visitas_v1';
 let routes = [];          // array de rutas parseadas
 let activeRouteId = null; // id de ruta seleccionada en Detalle de ruta
 let leafletMap = null;
+let allRoutesMap = null;
 
 /* =========================================================
    REPORTE DE VENTAS (EXCEL) — universo de clientes esperados
@@ -964,6 +1057,7 @@ function handleSalesFile(file){
       renderSalesFileInfo();
       renderSeguimiento();
       renderRouteList();
+      safeRender(renderRoutesMap);
       showToast('Reporte de ventas cargado: '+parsed.clients.length+' clientes distintos.');
     }catch(err){
       console.error('Error parseando reporte de ventas', err);
@@ -1073,6 +1167,7 @@ function handleChecklistFile(file){
       renderChecklistFileInfo();
       renderSeguimiento();
       renderRouteList();
+      safeRender(renderRoutesMap);
       if(activeRouteId) renderRouteDetail();
       showToast('Checklist cargado: '+checklist.codigos.length+' códigos de ruta, '+checklist.salas.length+' sala(s).');
     }catch(err){
@@ -1094,6 +1189,412 @@ function renderChecklistFileInfo(){
   if(!checklist){ info.style.display='none'; return; }
   info.style.display='block';
   text.textContent = `Cargado: ${esc(checklist.fileName)} — ${Object.keys(checklist.map).length} transportes (${formatDate(checklist.loadedAt.slice(0,10))})`;
+}
+
+/* =========================================================
+   MAESTRO DE CLIENTES
+   ========================================================= */
+const MAESTRO_STORAGE_KEY = 'jrgrodval_maestro_clientes_v1';
+let clientesMaestro = null; // { fileName, loadedAt, totalRows, clients:{code:{name,address,vkbur:[],bzirk:[],klabc:[],lat,lng}} }
+
+function loadMaestroFromStorage(){
+  try{
+    const raw = localStorage.getItem(MAESTRO_STORAGE_KEY);
+    clientesMaestro = raw ? JSON.parse(raw) : null;
+  }catch(e){
+    console.error('Error leyendo maestro de clientes guardado', e);
+    clientesMaestro = null;
+  }
+}
+function saveMaestroToStorage(){
+  try{
+    if(clientesMaestro) localStorage.setItem(MAESTRO_STORAGE_KEY, JSON.stringify(clientesMaestro));
+    else localStorage.removeItem(MAESTRO_STORAGE_KEY);
+  }catch(e){
+    showToast('No se pudo guardar el maestro de clientes en el almacenamiento local (¿archivo muy grande?).');
+    console.error(e);
+  }
+}
+
+function parseLatLng(v){
+  // El maestro trae coordenadas estilo SAP: "76.986752-" significa -76.986752
+  if(v===null || v===undefined || v==='') return null;
+  let s = String(v).trim();
+  const neg = s.endsWith('-');
+  if(neg) s = s.slice(0,-1);
+  const n = parseFloat(s);
+  if(isNaN(n)) return null;
+  return neg ? -n : n;
+}
+
+/* Algunos exports del maestro traen las columnas LATITUD/LONGITUD invertidas
+   (la columna "LATITUD" contiene en realidad la longitud). En Perú la longitud
+   tiene una magnitud mucho mayor (~70-81) que la latitud (~0-18.5), así que
+   comparamos el promedio de una muestra para detectar el intercambio sin
+   asumir un orden fijo (por si el archivo llega corregido más adelante). */
+function detectLatLngSwap(rows, headerRowIdx, idxLat, idxLng){
+  if(idxLat===-1 || idxLng===-1) return false;
+  let sumA=0, sumB=0, n=0;
+  const limit = rows.length;
+  for(let r=headerRowIdx+1; r<limit && n<300; r++){
+    const row = rows[r];
+    if(!row) continue;
+    const a = parseLatLng(row[idxLat]);
+    const b = parseLatLng(row[idxLng]);
+    if(a!==null && b!==null){
+      sumA += Math.abs(a); sumB += Math.abs(b); n++;
+    }
+  }
+  if(n===0) return false;
+  return (sumA/n) > (sumB/n);
+}
+
+function parseMaestroWorkbook(arrayBuffer, fileName){
+  if(typeof XLSX === 'undefined'){
+    throw new Error('LIB_XLSX_NO_DISPONIBLE');
+  }
+  const wb = XLSX.read(arrayBuffer, {type:'array'});
+  const sheetName = wb.SheetNames.includes('Sheet1') ? 'Sheet1' : wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+  if(rows.length < 2) throw new Error('SIN_FILAS');
+
+  const headerRowIdx = findHeaderRow(rows, ['cliente', 'nombre 1']);
+  if(headerRowIdx===-1) throw new Error('COLUMNAS_NO_ENCONTRADAS');
+  const headers = rows[headerRowIdx];
+
+  const idxCode = findHeaderIndex(headers, h => h === 'cliente');
+  const idxName = findHeaderIndex(headers, h => h === 'nombre 1');
+  const idxStreet = findHeaderIndex(headers, h => h === 'street');
+  const idxVkbur = findHeaderIndex(headers, h => h === 'vkbur');
+  const idxBzirk = findHeaderIndex(headers, h => h === 'bzirk');
+  const idxKlabc = findHeaderIndex(headers, h => h === 'klabc');
+  const idxLat = findHeaderIndex(headers, h => h === 'latitud');
+  const idxLng = findHeaderIndex(headers, h => h === 'longitud');
+
+  if(idxCode===-1 || idxName===-1) throw new Error('COLUMNAS_NO_ENCONTRADAS');
+
+  // Algunos exports traen las columnas LATITUD/LONGITUD invertidas (la columna "LATITUD"
+  // contiene en realidad la longitud, ~70-81 en Perú, y viceversa con la latitud, ~0-18.5).
+  // Autodetectamos comparando la magnitud promedio de una muestra, para no asumir un orden fijo.
+  const swapLatLng = detectLatLngSwap(rows, headerRowIdx, idxLat, idxLng);
+
+  const clientsMap = {};
+  for(let r=headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r];
+    if(!row || row.length===0) continue;
+    const rawCode = row[idxCode];
+    if(rawCode===''||rawCode===undefined||rawCode===null) continue;
+    const code = parseInt(String(rawCode).replace(/[^0-9]/g,''), 10);
+    if(isNaN(code)) continue;
+
+    if(!clientsMap[code]){
+      clientsMap[code] = {
+        code,
+        name: String(row[idxName]||'').trim(),
+        address: idxStreet!==-1 ? String(row[idxStreet]||'').trim() : '',
+        vkbur: new Set(), bzirk: new Set(), klabc: new Set(),
+        lat: null, lng: null
+      };
+    }
+    const c = clientsMap[code];
+    if(idxVkbur!==-1 && row[idxVkbur]) c.vkbur.add(String(row[idxVkbur]).trim());
+    if(idxBzirk!==-1 && row[idxBzirk]) c.bzirk.add(String(row[idxBzirk]).trim());
+    if(idxKlabc!==-1 && row[idxKlabc]) c.klabc.add(String(row[idxKlabc]).trim());
+    if(c.lat===null && idxLat!==-1){
+      const v = parseLatLng(row[swapLatLng ? idxLng : idxLat]);
+      if(v!==null) c.lat = v;
+    }
+    if(c.lng===null && idxLng!==-1){
+      const v = parseLatLng(row[swapLatLng ? idxLat : idxLng]);
+      if(v!==null) c.lng = v;
+    }
+  }
+
+  const clients = {};
+  Object.values(clientsMap).forEach(c=>{
+    clients[c.code] = {
+      code:c.code, name:c.name, address:c.address,
+      vkbur:[...c.vkbur], bzirk:[...c.bzirk], klabc:[...c.klabc],
+      lat:c.lat, lng:c.lng
+    };
+  });
+
+  const clientCount = Object.keys(clients).length;
+  if(clientCount===0) throw new Error('SIN_CLIENTES');
+
+  return {
+    fileName, loadedAt:new Date().toISOString(),
+    totalRows: rows.length-headerRowIdx-1,
+    clientCount,
+    clients
+  };
+}
+
+function handleMaestroFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const parsed = parseMaestroWorkbook(e.target.result, file.name);
+      clientesMaestro = parsed;
+      saveMaestroToStorage();
+      renderMaestroFileInfo();
+      safeRender(renderRoutesMap);
+      showToast('Maestro de clientes cargado: '+parsed.clientCount+' clientes distintos.');
+    }catch(err){
+      console.error('Error parseando maestro de clientes', err);
+      let msg = 'No se pudo leer el archivo del maestro de clientes.';
+      if(err.message==='COLUMNAS_NO_ENCONTRADAS') msg = 'No se encontraron las columnas esperadas (Cliente / Nombre 1) en la hoja.';
+      else if(err.message==='SIN_CLIENTES' || err.message==='SIN_FILAS') msg = 'El archivo no tiene filas de datos reconocibles.';
+      else if(err.message==='LIB_XLSX_NO_DISPONIBLE') msg = 'No se pudo cargar la librería para leer Excel desde internet. Revisa tu conexión e intenta de nuevo.';
+      showToast(msg);
+    }
+  };
+  reader.onerror = ()=> showToast('No se pudo leer el archivo seleccionado.');
+  reader.readAsArrayBuffer(file);
+}
+
+function renderMaestroFileInfo(){
+  const info = document.getElementById('maestroFileInfo');
+  const text = document.getElementById('maestroFileInfoText');
+  if(!clientesMaestro){ info.style.display='none'; return; }
+  info.style.display='block';
+  text.textContent = `Cargado: ${esc(clientesMaestro.fileName)} — ${clientesMaestro.clientCount} clientes (${formatDate(clientesMaestro.loadedAt.slice(0,10))})`;
+}
+
+function renderImportar(){
+  renderSalesFileInfo();
+  renderChecklistFileInfo();
+  renderMaestroFileInfo();
+}
+
+/* Busca las coordenadas de un cliente en el Maestro de Clientes, por código de cliente */
+function getMaestroCoords(clientId){
+  if(!clientesMaestro || !clientId) return null;
+  const code = parseInt(String(clientId).replace(/[^0-9]/g,''), 10);
+  if(isNaN(code)) return null;
+  const c = clientesMaestro.clients[code];
+  if(!c || c.lat===null || c.lat===undefined || c.lng===null || c.lng===undefined) return null;
+  return {lat:c.lat, lng:c.lng};
+}
+
+/* Genera un color distinto (HSL con tono distribuido) por cada ruta cargada */
+function getRouteColorPalette(routeIds){
+  const n = routeIds.length;
+  const colors = {};
+  routeIds.forEach((id,i)=>{
+    const hue = Math.round((360 * i) / Math.max(n,1));
+    colors[id] = `hsl(${hue}, 70%, 58%)`;
+  });
+  return colors;
+}
+
+function statusColorFor(s){
+  if(s==='ATENDIDO') return '#3fae66';
+  if(s==='RECHAZADO') return '#d15b5b';
+  if(s==='EN_PROGRESO') return '#d1a83f';
+  if(s==='PENDIENTE') return '#4f8fd1';
+  return '#8892a0';
+}
+
+/* Arma la lista de puntos a graficar. Si hay reporte de ventas cargado, usa TODOS los clientes
+   programados para las rutas ya cargadas (incluye pendientes, no solo los que ya tienen visita
+   registrada en el JSON); si no hay reporte, usa como respaldo solo lo que traen los JSON. */
+/* Etiqueta de ruta a partir de un número de transporte crudo: usa el código del checklist
+   si está disponible, o el propio número de transporte como respaldo. */
+function normalizeTransporteLabel(t){
+  if(t===undefined || t===null || t==='') return 's/n';
+  const info = getChecklistInfoForTransporte(t);
+  return info && info.codigo ? info.codigo : String(t);
+}
+
+/* Arma la lista de puntos a graficar. Si hay reporte de ventas cargado, cruza TODOS sus
+   clientes (de cualquier ruta del reporte, no solo las que ya cargaste como JSON) contra las
+   coordenadas del Maestro de Clientes — así aparecen todos los clientes programados, con su
+   estado real cuando hay una visita cargada, o "Pendiente" si aún no. Si no hay reporte de
+   ventas, se usa como respaldo solo lo que traen los JSON de rutas ya cargados. */
+function buildMapPoints(){
+  const allTransportesSet = new Set();
+  routes.forEach(r=>{ const n=normalizeTransporteNum(r.transportId); if(n!==null) allTransportesSet.add(n); });
+  if(salesReport){
+    salesReport.clients.forEach(c=> c.transportes.forEach(t=>{
+      const n = normalizeTransporteNum(t); if(n!==null) allTransportesSet.add(n);
+    }));
+  }
+  const allTransportes = [...allTransportesSet].sort((a,b)=>a-b);
+  const palette = getRouteColorPalette(allTransportes);
+
+  const points = [];
+
+  if(salesReport){
+    const visitMap = getClientVisitStatusMap();
+    salesReport.clients.forEach(c=>{
+      const v = visitMap[c.code];
+      let status;
+      if(!v) status = 'PENDIENTE';
+      else if(v.delivered) status = 'ATENDIDO';
+      else if(v.rejected) status = 'RECHAZADO';
+      else if(v.inProgress) status = 'EN_PROGRESO';
+      else status = 'PENDIENTE';
+
+      let loc = getMaestroCoords(c.code);
+      if(!loc){
+        outer: for(const r of routes){
+          for(const vis of r.visits){
+            const vcode = parseInt(String(vis.clientId||'').replace(/[^0-9]/g,''), 10);
+            if(vcode===c.code && vis.location && typeof vis.location.lat==='number'){ loc = vis.location; break outer; }
+          }
+        }
+      }
+      if(!loc) return;
+
+      const primaryT = c.transportes[0];
+      const norm = normalizeTransporteNum(primaryT);
+      const chkInfo = getChecklistInfoForTransporte(primaryT);
+      points.push({
+        lat:loc.lat, lng:loc.lng, status,
+        clientName:c.name,
+        routeLabel: normalizeTransporteLabel(primaryT),
+        routeColor: norm!==null && palette[norm] ? palette[norm] : '#8892a0',
+        sala: chkInfo && chkInfo.sala ? chkInfo.sala : '',
+        amount:c.totalFact
+      });
+    });
+  }else{
+    routes.forEach(r=>{
+      const norm = normalizeTransporteNum(r.transportId);
+      const chkInfo = getChecklistInfoForTransporte(r.transportId);
+      const routeLabel = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
+      const sala = chkInfo && chkInfo.sala ? chkInfo.sala : '';
+      r.visits.forEach(v=>{
+        let loc = getMaestroCoords(v.clientId);
+        if(!loc && v.location && typeof v.location.lat==='number') loc = v.location;
+        if(!loc) return;
+        const status = v.status==='DELIVERED' ? 'ATENDIDO' : v.status==='REJECTED' ? 'RECHAZADO' : 'EN_PROGRESO';
+        points.push({
+          lat:loc.lat, lng:loc.lng, status, clientName:v.clientName, routeLabel,
+          routeColor: norm!==null && palette[norm] ? palette[norm] : '#8892a0',
+          sala,
+          amount:v.amount
+        });
+      });
+    });
+  }
+  return points;
+}
+
+/* Mapa consolidado: un solo color por punto (según el modo elegido en el desplegable),
+   sin mezclar dos codificaciones de color en el mismo marcador. */
+let mapColorMode = 'status'; // 'status' | 'route'
+const mapRouteFilterState = new Set(); // vacío = todas las rutas; si no, uno o más routeLabel
+const mapSalaFilterState = new Set();  // vacío = todas las salas; si no, una o más salas
+
+function renderRoutesMap(){
+  const container = document.getElementById('allRoutesMap');
+  const statusLegend = document.getElementById('statusLegend');
+  const routeLegend = document.getElementById('routeLegend');
+  const statusWrap = document.getElementById('statusLegendWrap');
+  const routeWrap = document.getElementById('routeLegendWrap');
+  if(!container || !statusLegend || !routeLegend) return;
+
+  if(allRoutesMap){ try{ allRoutesMap.remove(); }catch(e){} allRoutesMap=null; }
+  container.innerHTML = '';
+  statusLegend.innerHTML = '';
+  routeLegend.innerHTML = '';
+
+  if(routes.length===0 && !salesReport){
+    container.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">Carga al menos una ruta o un reporte de ventas (en "Importar") para ver el mapa consolidado.</div>';
+    if(statusWrap) statusWrap.style.display='none';
+    if(routeWrap) routeWrap.style.display='none';
+    buildMultiSelect(mapRouteFilterState, 'mapRouteFilterBtn', 'mapRouteFilterPanel', [], 'Todas las rutas', false, '', ()=>safeRender(renderRoutesMap));
+    buildMultiSelect(mapSalaFilterState, 'mapSalaFilterBtn', 'mapSalaFilterPanel', [], 'Todas las salas', false, '', ()=>safeRender(renderRoutesMap));
+    return;
+  }
+  if(typeof L === 'undefined'){
+    container.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">No se pudo cargar el mapa desde internet (librería bloqueada). El resto del dashboard sigue funcionando con normalidad.</div>';
+    return;
+  }
+
+  const allPoints = buildMapPoints();
+
+  // Poblar el filtro de ruta con las rutas que realmente aparecen entre los puntos
+  const routeLabelsPresent = [...new Set(allPoints.map(p=>p.routeLabel))]
+    .sort((a,b)=>a.localeCompare(b, undefined, {numeric:true}));
+  buildMultiSelect(mapRouteFilterState, 'mapRouteFilterBtn', 'mapRouteFilterPanel',
+    routeLabelsPresent.map(l=>({value:l, label:l})), 'Todas las rutas', false, '', ()=>safeRender(renderRoutesMap));
+
+  // Poblar el filtro de sala con las salas que realmente aparecen entre los puntos (viene del checklist)
+  const salasPresent = [...new Set(allPoints.map(p=>p.sala).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b, undefined, {numeric:true}));
+  buildMultiSelect(mapSalaFilterState, 'mapSalaFilterBtn', 'mapSalaFilterPanel',
+    salasPresent.map(s=>({value:s, label:s})), 'Todas las salas', salasPresent.length===0,
+    salasPresent.length===0 ? 'Carga el checklist en "Importar" para filtrar por sala' : '',
+    ()=>safeRender(renderRoutesMap));
+
+  let points = mapRouteFilterState.size>0
+    ? allPoints.filter(p=>mapRouteFilterState.has(p.routeLabel))
+    : allPoints;
+  points = mapSalaFilterState.size>0
+    ? points.filter(p=>mapSalaFilterState.has(p.sala))
+    : points;
+
+  if(points.length===0){
+    container.innerHTML = (mapRouteFilterState.size>0 || mapSalaFilterState.size>0)
+      ? '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">No hay clientes con coordenadas disponibles para el filtro elegido.</div>'
+      : (salesReport
+        ? '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">Ningún cliente del reporte de ventas tiene coordenadas disponibles. Carga el Maestro de Clientes en "Importar".</div>'
+        : '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">No hay coordenadas disponibles todavía. Carga el reporte de ventas y el Maestro de Clientes en "Importar" para ver todos los clientes programados.</div>');
+    if(statusWrap) statusWrap.style.display='none';
+    if(routeWrap) routeWrap.style.display='none';
+    return;
+  }
+
+  if(statusWrap) statusWrap.style.display = mapColorMode==='status' ? 'block' : 'none';
+  if(routeWrap) routeWrap.style.display = mapColorMode==='route' ? 'block' : 'none';
+
+  const avgLat = points.reduce((s,p)=>s+p.lat,0)/points.length;
+  const avgLng = points.reduce((s,p)=>s+p.lng,0)/points.length;
+  allRoutesMap = L.map(container, {scrollWheelZoom:true}).setView([avgLat, avgLng], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap contributors', maxZoom:19
+  }).addTo(allRoutesMap);
+
+  const bounds = [];
+  points.forEach(p=>{
+    const color = mapColorMode==='status' ? statusColorFor(p.status) : p.routeColor;
+    const marker = L.circleMarker([p.lat, p.lng], {
+      radius:7, weight:1.5,
+      color:'#14161a',
+      fillColor: color,
+      fillOpacity:.9
+    }).addTo(allRoutesMap);
+    marker.bindPopup(`<b>${esc(p.clientName)}</b><br>Ruta: ${esc(p.routeLabel)}<br>Estado: ${esc(translateSegStatus(p.status))}<br>S/ ${p.amount.toFixed(2)}`);
+    bounds.push([p.lat, p.lng]);
+  });
+  if(bounds.length>1) allRoutesMap.fitBounds(bounds, {padding:[30,30]});
+
+  // Leyenda de estado: solo los estados que realmente aparecen entre los puntos
+  const statusOrder = ['ATENDIDO','PENDIENTE','RECHAZADO','EN_PROGRESO'];
+  const statusesPresent = new Set(points.map(p=>p.status));
+  statusLegend.innerHTML = statusOrder.filter(s=>statusesPresent.has(s)).map(s=>
+    `<span class="legend-item"><span class="legend-dot" style="background:${statusColorFor(s)}"></span>${translateSegStatus(s)}</span>`
+  ).join('');
+
+  // Leyenda de ruta: una por cada ruta que realmente aparece entre los puntos graficados
+  // (puede incluir rutas del reporte de ventas que todavía no cargaste como JSON)
+  const routesPresent = [];
+  const seenLabels = new Set();
+  points.forEach(p=>{
+    if(!seenLabels.has(p.routeLabel)){
+      seenLabels.add(p.routeLabel);
+      routesPresent.push({label:p.routeLabel, color:p.routeColor});
+    }
+  });
+  routesPresent.sort((a,b)=>a.label.localeCompare(b.label, undefined, {numeric:true}));
+  routeLegend.innerHTML = routesPresent.map(r=>
+    `<span class="legend-item"><span class="legend-dot" style="background:${r.color}"></span>${esc(r.label)}</span>`
+  ).join('');
 }
 
 /* Busca en el checklist (Transporte -> Código/Sala) la info que corresponde a un transportId de ruta,
@@ -1193,13 +1694,13 @@ const segFilterState = {
   sala: new Set()
 };
 
-function buildMultiSelect(key, btnId, panelId, options, labelAll, disabled, disabledTitle){
+function buildMultiSelect(stateSet, btnId, panelId, options, labelAll, disabled, disabledTitle, onChange){
   const btn = document.getElementById(btnId);
   const panel = document.getElementById(panelId);
 
   // Descartar selecciones que ya no existen entre las opciones actuales
   const validValues = new Set(options.map(o=>o.value));
-  [...segFilterState[key]].forEach(v=>{ if(!validValues.has(v)) segFilterState[key].delete(v); });
+  [...stateSet].forEach(v=>{ if(!validValues.has(v)) stateSet.delete(v); });
 
   btn.disabled = !!disabled;
   btn.title = disabled ? (disabledTitle||'') : '';
@@ -1227,11 +1728,11 @@ function buildMultiSelect(key, btnId, panelId, options, labelAll, disabled, disa
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.value = opt.value;
-      cb.checked = segFilterState[key].has(opt.value);
+      cb.checked = stateSet.has(opt.value);
       cb.addEventListener('change', ()=>{
-        if(cb.checked) segFilterState[key].add(opt.value); else segFilterState[key].delete(opt.value);
-        updateMultiSelectLabel(key, btn, labelAll, options.length);
-        filterAndRenderSeguimiento();
+        if(cb.checked) stateSet.add(opt.value); else stateSet.delete(opt.value);
+        updateMultiSelectLabel(stateSet, btn, labelAll, options.length);
+        onChange();
       });
       row.appendChild(cb);
       row.appendChild(document.createTextNode(opt.label));
@@ -1239,24 +1740,24 @@ function buildMultiSelect(key, btnId, panelId, options, labelAll, disabled, disa
     });
 
     selAll.addEventListener('click', ()=>{
-      options.forEach(o=>segFilterState[key].add(o.value));
+      options.forEach(o=>stateSet.add(o.value));
       panel.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=true);
-      updateMultiSelectLabel(key, btn, labelAll, options.length);
-      filterAndRenderSeguimiento();
+      updateMultiSelectLabel(stateSet, btn, labelAll, options.length);
+      onChange();
     });
     selNone.addEventListener('click', ()=>{
-      segFilterState[key].clear();
+      stateSet.clear();
       panel.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false);
-      updateMultiSelectLabel(key, btn, labelAll, options.length);
-      filterAndRenderSeguimiento();
+      updateMultiSelectLabel(stateSet, btn, labelAll, options.length);
+      onChange();
     });
   }
 
-  updateMultiSelectLabel(key, btn, labelAll, options.length);
+  updateMultiSelectLabel(stateSet, btn, labelAll, options.length);
 }
 
-function updateMultiSelectLabel(key, btn, labelAll, total){
-  const n = segFilterState[key].size;
+function updateMultiSelectLabel(stateSet, btn, labelAll, total){
+  const n = stateSet.size;
   if(n===0){ btn.textContent = labelAll; btn.classList.remove('has-selection'); }
   else if(n===total){ btn.textContent = labelAll+' (todos)'; btn.classList.remove('has-selection'); }
   else { btn.textContent = n+' seleccionado'+(n>1?'s':''); btn.classList.add('has-selection'); }
@@ -1277,24 +1778,24 @@ function renderSeguimiento(){
   const list = buildSeguimientoList();
   window._seguimientoList = list;
 
-  buildMultiSelect('status', 'segStatusBtn', 'segStatusPanel', [
+  buildMultiSelect(segFilterState.status, 'segStatusBtn', 'segStatusPanel', [
     {value:'ATENDIDO', label:'Atendido'},
     {value:'PENDIENTE', label:'Pendiente (sin visita)'},
     {value:'RECHAZADO', label:'Rechazado'},
     {value:'EN_PROGRESO', label:'En progreso'}
-  ], 'Todos los estados', false);
+  ], 'Todos los estados', false, '', filterAndRenderSeguimiento);
 
   const allTransportes = [...new Set(list.flatMap(c=>c.transportes))].sort();
-  buildMultiSelect('transporte', 'segTransporteBtn', 'segTransportePanel',
-    allTransportes.map(t=>({value:t, label:t})), 'Todos los transportes', false);
+  buildMultiSelect(segFilterState.transporte, 'segTransporteBtn', 'segTransportePanel',
+    allTransportes.map(t=>({value:t, label:t})), 'Todos los transportes', false, '', filterAndRenderSeguimiento);
 
   const allCodigos = [...new Set(list.flatMap(c=>c.codigos))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-  buildMultiSelect('codigo', 'segCodigoBtn', 'segCodigoPanel',
-    allCodigos.map(c=>({value:c, label:c})), 'Todos los códigos', !checklist, 'Carga el checklist para filtrar por código de ruta');
+  buildMultiSelect(segFilterState.codigo, 'segCodigoBtn', 'segCodigoPanel',
+    allCodigos.map(c=>({value:c, label:c})), 'Todos los códigos', !checklist, 'Carga el checklist para filtrar por código de ruta', filterAndRenderSeguimiento);
 
   const allSalas = [...new Set(list.flatMap(c=>c.salas))].sort();
-  buildMultiSelect('sala', 'segSalaBtn', 'segSalaPanel',
-    allSalas.map(s=>({value:s, label:s})), 'Todas las salas', !checklist, 'Carga el checklist para filtrar por sala');
+  buildMultiSelect(segFilterState.sala, 'segSalaBtn', 'segSalaPanel',
+    allSalas.map(s=>({value:s, label:s})), 'Todas las salas', !checklist, 'Carga el checklist para filtrar por sala', filterAndRenderSeguimiento);
 
   filterAndRenderSeguimiento();
 }
@@ -1601,6 +2102,7 @@ function renderOverview(){
   const content = document.getElementById('overviewContent');
   if(routes.length===0){
     empty.style.display='block'; content.style.display='none';
+    safeRender(renderRoutesMap);
     return;
   }
   empty.style.display='none'; content.style.display='block';
@@ -1636,6 +2138,7 @@ function renderOverview(){
   document.getElementById('kpiRejectedSub').textContent = inProgress+' aún en progreso';
 
   renderChoferesTable();
+  safeRender(renderRoutesMap);
 }
 
 function safeRender(fn){
@@ -1673,14 +2176,30 @@ function renderChoferesTable(){
           <span class="visita-label">${delivered}/${total}</span>
         </div>
       </td>
-      <td class="num">${salesStats ? salesStats.pct.toFixed(1)+'%' : '—'}</td>`;
-    tr.addEventListener('click', ()=>{
+      <td class="num">${salesStats ? salesStats.pct.toFixed(1)+'%' : '—'}</td>
+      <td class="num"><span class="chofer-del" data-id="${esc(r.routeId)}" title="Eliminar esta ruta">🗑</span></td>`;
+    tr.addEventListener('click', (ev)=>{
+      if(ev.target.classList.contains('chofer-del')) return;
       activeRouteId = r.routeId;
       switchView('routeDetail');
       renderRouteList();
       renderRouteDetail();
     });
     tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('.chofer-del').forEach(btn=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      showConfirm('¿Eliminar esta ruta del almacenamiento local?', ()=>{
+        routes = routes.filter(r=>r.routeId!==id);
+        if(activeRouteId===id) activeRouteId = routes.length>0 ? routes[0].routeId : null;
+        saveToStorage();
+        renderAll();
+        showToast('Ruta eliminada.');
+      });
+    });
   });
 }
 
@@ -1883,6 +2402,7 @@ function switchView(name){
   if(name==='products') renderProducts();
   if(name==='clients') renderClients();
   if(name==='seguimiento') renderSeguimiento();
+  if(name==='importar') renderImportar();
 }
 
 function renderAll(){
@@ -1897,6 +2417,31 @@ function showToast(msg){
   t.classList.add('show');
   clearTimeout(window._toastTimer);
   window._toastTimer = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+/* Confirmación propia dentro de la página (no usa window.confirm nativo, que algunos
+   navegadores/políticas corporativas bloquean o suprimen silenciosamente). */
+function showConfirm(message, onConfirm){
+  const overlay = document.getElementById('confirmModal');
+  const text = document.getElementById('confirmModalText');
+  const btnOk = document.getElementById('confirmModalOk');
+  const btnCancel = document.getElementById('confirmModalCancel');
+  text.textContent = message;
+  overlay.style.display = 'flex';
+
+  function cleanup(){
+    overlay.style.display = 'none';
+    btnOk.removeEventListener('click', onOk);
+    btnCancel.removeEventListener('click', onCancel);
+    overlay.removeEventListener('click', onOverlayClick);
+  }
+  function onOk(){ cleanup(); onConfirm(); }
+  function onCancel(){ cleanup(); }
+  function onOverlayClick(e){ if(e.target===overlay) cleanup(); }
+
+  btnOk.addEventListener('click', onOk);
+  btnCancel.addEventListener('click', onCancel);
+  overlay.addEventListener('click', onOverlayClick);
 }
 
 /* =========================================================
@@ -1917,12 +2462,12 @@ document.getElementById('routeDetailSelect').addEventListener('change', (e)=>{
 });
 document.getElementById('deleteActiveRouteBtn').addEventListener('click', ()=>{
   if(!activeRouteId) return;
-  if(confirm('¿Eliminar esta ruta del almacenamiento local?')){
+  showConfirm('¿Eliminar esta ruta del almacenamiento local?', ()=>{
     routes = routes.filter(r=>r.routeId!==activeRouteId);
     activeRouteId = routes.length>0 ? routes[0].routeId : null;
     saveToStorage();
     renderAll();
-  }
+  });
 });
 
 const salesUploadZone = document.getElementById('salesUploadZone');
@@ -1940,13 +2485,14 @@ salesUploadZone.addEventListener('drop', e=>{
   if(e.dataTransfer.files && e.dataTransfer.files[0]) handleSalesFile(e.dataTransfer.files[0]);
 });
 document.getElementById('salesFileRemove').addEventListener('click', ()=>{
-  if(confirm('¿Quitar el reporte de ventas cargado?')){
+  showConfirm('¿Quitar el reporte de ventas cargado?', ()=>{
     salesReport = null;
     saveSalesToStorage();
     renderSeguimiento();
     renderRouteList();
+    safeRender(renderRoutesMap);
     showToast('Reporte de ventas quitado.');
-  }
+  });
 });
 
 const checklistUploadZone = document.getElementById('checklistUploadZone');
@@ -1964,18 +2510,48 @@ checklistUploadZone.addEventListener('drop', e=>{
   if(e.dataTransfer.files && e.dataTransfer.files[0]) handleChecklistFile(e.dataTransfer.files[0]);
 });
 document.getElementById('checklistFileRemove').addEventListener('click', ()=>{
-  if(confirm('¿Quitar el checklist cargado? Los filtros de Código y Sala dejarán de estar disponibles.')){
+  showConfirm('¿Quitar el checklist cargado? Los filtros de Código y Sala dejarán de estar disponibles.', ()=>{
     checklist = null;
     saveChecklistToStorage();
     renderSeguimiento();
     renderRouteList();
+    safeRender(renderRoutesMap);
     if(activeRouteId) renderRouteDetail();
     showToast('Checklist quitado.');
-  }
+  });
+});
+
+const maestroUploadZone = document.getElementById('maestroUploadZone');
+const maestroFileInput = document.getElementById('maestroFileInput');
+maestroUploadZone.addEventListener('click', ()=>maestroFileInput.click());
+maestroFileInput.addEventListener('change', e=>{
+  if(e.target.files && e.target.files[0]) handleMaestroFile(e.target.files[0]);
+  maestroFileInput.value='';
+});
+maestroUploadZone.addEventListener('dragover', e=>{ e.preventDefault(); maestroUploadZone.classList.add('dragover'); });
+maestroUploadZone.addEventListener('dragleave', ()=> maestroUploadZone.classList.remove('dragover'));
+maestroUploadZone.addEventListener('drop', e=>{
+  e.preventDefault();
+  maestroUploadZone.classList.remove('dragover');
+  if(e.dataTransfer.files && e.dataTransfer.files[0]) handleMaestroFile(e.dataTransfer.files[0]);
+});
+document.getElementById('maestroFileRemove').addEventListener('click', ()=>{
+  showConfirm('¿Quitar el maestro de clientes cargado?', ()=>{
+    clientesMaestro = null;
+    saveMaestroToStorage();
+    renderMaestroFileInfo();
+    safeRender(renderRoutesMap);
+    showToast('Maestro de clientes quitado.');
+  });
 });
 
 document.getElementById('segSearch').addEventListener('input', filterAndRenderSeguimiento);
 document.getElementById('exportSeguimientoExcelBtn').addEventListener('click', exportSeguimientoExcel);
+
+document.getElementById('mapColorModeSelect').addEventListener('change', (e)=>{
+  mapColorMode = e.target.value;
+  safeRender(renderRoutesMap);
+});
 
 // Toggle de los paneles de selección múltiple (Estado / Transporte / Código / Sala)
 document.querySelectorAll('.msel-btn').forEach(btn=>{
@@ -1998,13 +2574,13 @@ document.querySelectorAll('.msel-panel').forEach(panel=>{
 
 document.getElementById('clearAllBtn').addEventListener('click', ()=>{
   if(routes.length===0) return;
-  if(confirm('¿Borrar todas las rutas cargadas del almacenamiento local? Esta acción no se puede deshacer.')){
+  showConfirm('¿Borrar todas las rutas cargadas del almacenamiento local? Esta acción no se puede deshacer.', ()=>{
     routes = [];
     activeRouteId = null;
     saveToStorage();
     renderAll();
     showToast('Se borraron todas las rutas.');
-  }
+  });
 });
 
 document.getElementById('exportAllBtn').addEventListener('click', ()=>{
@@ -2172,6 +2748,7 @@ document.getElementById('onlyPendingChk').addEventListener('change', filterAndRe
 loadFromStorage();
 loadSalesFromStorage();
 loadChecklistFromStorage();
+loadMaestroFromStorage();
 updateStorageInfo();
 renderAll();
 </script>
