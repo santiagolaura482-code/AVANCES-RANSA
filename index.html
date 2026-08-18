@@ -381,6 +381,9 @@
     padding:8px 10px;
     border-bottom:1px solid var(--border);
   }
+  th.sortable{cursor:pointer;user-select:none;white-space:nowrap;}
+  th.sortable:hover{color:var(--text);}
+  th.sortable .sort-arrow{display:inline-block;width:10px;font-size:9px;color:var(--amber);}
   td{
     padding:8px 10px;
     border-bottom:1px solid #22252c;
@@ -412,6 +415,38 @@
   @media(max-width:1050px){.map-detail-row{grid-template-columns:1fr;}}
   .route-detail-table-wrap{max-height:460px;overflow-y:auto;}
   .route-detail-table-empty{padding:40px 10px;text-align:center;color:var(--text-dim);font-size:12.5px;}
+
+  .map-client-search{position:relative;margin-bottom:12px;}
+  .map-client-search input{width:100%;}
+  .map-client-results{
+    display:none;
+    position:absolute;
+    top:calc(100% + 4px);
+    left:0; right:0;
+    max-height:280px;
+    overflow-y:auto;
+    background:var(--panel2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    box-shadow:0 10px 24px rgba(0,0,0,.45);
+    z-index:9999;
+  }
+  .map-client-results.open{display:block;}
+  .map-client-result{
+    padding:8px 12px;
+    cursor:pointer;
+    border-bottom:1px solid #22252c;
+    font-size:12.5px;
+  }
+  .map-client-result:last-child{border-bottom:none;}
+  .map-client-result:hover{background:var(--panel);}
+  .map-client-result .mc-name{font-weight:600;color:var(--text);}
+  .map-client-result .mc-meta{font-size:11px;color:var(--text-dim);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap;}
+  .map-client-result .mc-status{
+    display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;
+  }
+  .map-client-empty{padding:12px;font-size:12px;color:var(--text-dim);text-align:center;}
+  .map-client-more{padding:8px 12px;font-size:11px;color:var(--text-dim);text-align:center;font-style:italic;}
 
   .map-legends{display:block;}
   .map-legend-title{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-dim);margin-bottom:8px;}
@@ -555,13 +590,16 @@
   .agenda-btn{
     display:inline-flex;align-items:center;justify-content:center;
     width:28px;height:28px;border-radius:7px;
-    text-decoration:none;font-size:14px;cursor:pointer;
+    text-decoration:none;cursor:pointer;
     border:1px solid var(--border);background:var(--panel2);
+    color:var(--text-dim);
     transition:.12s;
   }
-  .agenda-btn-wa:hover{border-color:#3fae66;background:rgba(63,174,102,.15);}
+  .agenda-btn-wa{color:#25D366;border-color:rgba(37,211,102,.35);}
+  .agenda-btn-wa:hover{border-color:#25D366;background:rgba(37,211,102,.18);color:#25D366;}
+  .agenda-btn-call{color:var(--blue);}
   .agenda-btn-call:hover{border-color:var(--blue);background:rgba(79,143,209,.15);}
-  .agenda-btn-del{color:var(--text-dim);}
+  .agenda-btn-del{color:var(--text-dim);font-size:13px;}
   .agenda-btn-del:hover{border-color:var(--red);color:var(--red);background:rgba(209,91,91,.15);}
   .agenda-btn-disabled{opacity:.3;cursor:not-allowed;}
   td[contenteditable="true"]{cursor:text;}
@@ -677,6 +715,10 @@
             <option value="route">Leyenda: Por Ruta</option>
           </select>
         </div>
+        <div class="map-client-search" id="mapClientSearchWrap">
+          <input type="text" id="mapClientSearch" placeholder="Buscar cliente por código o nombre...">
+          <div class="map-client-results" id="mapClientResults"></div>
+        </div>
         <div id="allRoutesMap"></div>
         <div class="map-legends">
           <div class="map-legend" id="statusLegendWrap">
@@ -695,7 +737,12 @@
         <div class="route-detail-table-wrap">
           <table>
             <thead><tr>
-              <th>Ruta</th><th>Transporte</th><th class="num">Programados</th><th class="num">Atendidos</th><th class="num">Pendientes</th>
+              <th class="sortable" data-sort="ruta">Ruta<span class="sort-arrow"></span></th>
+              <th class="sortable" data-sort="transporte">Transporte<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="programados">Programados<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="atendidos">Atendidos<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="pendientes">Pendientes<span class="sort-arrow"></span></th>
+              <th class="num"></th>
             </tr></thead>
             <tbody id="routeDetailTbody"></tbody>
           </table>
@@ -1435,6 +1482,10 @@ const AGENDA_STORAGE_KEY = 'jrgrodval_agenda_contactos_v1';
 let agendaContacts = [];
 let tesseractLoadPromise = null;
 
+/* Íconos como SVG en línea (no dependen de internet ni de fuentes de emoji del sistema) */
+const AGENDA_ICON_WHATSAPP = `<svg viewBox="0 0 32 32" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M16.04 3C9.4 3 4 8.4 4 15.04c0 2.23.6 4.32 1.65 6.12L4 29l8.02-1.61a12.02 12.02 0 0 0 4.02.69c6.64 0 12.04-5.4 12.04-12.04C28.08 8.4 22.68 3 16.04 3Zm0 21.94c-1.86 0-3.6-.5-5.1-1.38l-.37-.22-4.76.96.98-4.64-.24-.38a9.9 9.9 0 0 1-1.55-5.24c0-5.47 4.45-9.92 9.94-9.92 5.48 0 9.93 4.45 9.93 9.92 0 5.48-4.45 9.9-9.93 9.9Zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.24-.46-2.37-1.46-.88-.78-1.47-1.75-1.64-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.6-.91-2.2-.24-.58-.49-.5-.67-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.09 3.2 5.08 4.48.71.31 1.26.49 1.69.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35Z"/></svg>`;
+const AGENDA_ICON_CALL = `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.24.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2Z"/></svg>`;
+
 function loadAgendaFromStorage(){
   try{
     const raw = localStorage.getItem(AGENDA_STORAGE_KEY);
@@ -1483,13 +1534,56 @@ function parseWordsToContact(words){
     }else if(!telefono && /^9\d{8}$/.test(digits)){
       telefono = digits;
     }else if(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(t)){
-      nameTokens.push(t.replace(/^[|_.,;:]+|[|_.,;:]+$/g,''));
+      nameTokens.push(t.replace(/^[|_.,;:()[\]{}"'*”“]+|[|_.,;:()[\]{}"'*”“]+$/g,''));
     }
   });
   return {ruta, telefono, nombre: nameTokens.join(' ').trim()};
 }
 
 const AGENDA_HEADER_WORDS = ['RUTAS','CHOFERES','PERSONAL','DISTRIBUCION','DISTRIBUC','SALA','CODIGO'];
+
+/* Divide la imagen en franjas horizontales con solape. Tesseract, incluso en modo "página
+   completa", suele reconocer solo una fracción de las filas en tablas densas con muchas líneas
+   de cuadrícula (probado: PSM 3/4/6/11 no cambian el resultado). Procesar franja por franja
+   con solape recupera las filas que el análisis de una sola pasada se salta. */
+function splitImageIntoStrips(img, targetStripHeight, overlapRatio){
+  const stripCount = Math.max(3, Math.min(12, Math.ceil(img.height / targetStripHeight)));
+  const stripH = img.height / stripCount;
+  const strips = [];
+  for(let i=0; i<stripCount; i++){
+    const yStart = Math.max(0, i*stripH - stripH*overlapRatio);
+    const yEnd = Math.min(img.height, (i+1)*stripH + stripH*overlapRatio);
+    const h = yEnd - yStart;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, yStart, img.width, h, 0, 0, img.width, h);
+    strips.push(canvas.toDataURL('image/png'));
+  }
+  return strips;
+}
+
+/* El solape entre franjas hace que la misma fila aparezca 2 veces; se agrupan por ruta
+   (o por teléfono si la ruta no se reconoció), combinando el dato más completo de cada campo. */
+function dedupeAgendaContacts(list){
+  const seen = new Map();
+  const result = [];
+  list.forEach(c=>{
+    const key = c.ruta ? ('r:'+c.ruta) : (c.telefono ? ('t:'+c.telefono) : null);
+    if(!key){ result.push(c); return; }
+    if(seen.has(key)){
+      const existing = seen.get(key);
+      if(!existing.telefono && c.telefono) existing.telefono = c.telefono;
+      if(!existing.ruta && c.ruta) existing.ruta = c.ruta;
+      if((c.nombre||'').length > (existing.nombre||'').length) existing.nombre = c.nombre;
+    }else{
+      seen.set(key, c);
+      result.push(c);
+    }
+  });
+  return result;
+}
 
 function handleAgendaImage(file){
   if(!file) return;
@@ -1502,39 +1596,66 @@ function handleAgendaImage(file){
       statusEl.textContent = 'No se pudo cargar el motor de OCR desde internet. Revisa tu conexión e intenta de nuevo, o agrega los contactos manualmente.';
       return;
     }
-    statusEl.textContent = 'Analizando la imagen (puede tardar unos segundos)...';
-    Tesseract.recognize(file, 'spa', {
-      logger: m=>{
-        if(m.status==='recognizing text' && typeof m.progress==='number'){
-          statusEl.textContent = 'Analizando la imagen... '+Math.round(m.progress*100)+'%';
+
+    const img = new Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = async ()=>{
+      try{
+        statusEl.textContent = 'Preparando la imagen...';
+        const strips = splitImageIntoStrips(img, 140, 0.25);
+        URL.revokeObjectURL(objUrl);
+
+        let allLines = [];
+        for(let i=0; i<strips.length; i++){
+          statusEl.textContent = `Analizando la imagen... (parte ${i+1} de ${strips.length})`;
+          // eslint-disable-next-line no-await-in-loop
+          // workerBlobURL:false evita crear el worker a través de un Blob interno
+          // (bloqueado por política de seguridad al usar la app dentro del entorno
+          // de vista previa de Claude); en su lugar carga el script del worker directo.
+          const result = await Tesseract.recognize(strips[i], 'spa', { workerBlobURL: false });
+          const lines = (result.data.lines||[]).filter(l=>l.words && l.words.length>0);
+          allLines = allLines.concat(lines);
+        }
+
+        if(allLines.length===0){
+          statusEl.textContent = 'No se reconoció texto en la imagen. Prueba con una foto más nítida o agrega los contactos manualmente.';
+          return;
+        }
+
+        let parsed = allLines
+          .map(l=>parseWordsToContact(l.words))
+          // Se exige ruta o teléfono (no solo nombre): descarta el ruido de texto que a veces
+          // aparece en los bordes de una franja, sin dato "duro" que lo respalde.
+          .filter(c => c.ruta || c.telefono)
+          .filter(c => !AGENDA_HEADER_WORDS.some(h => c.nombre.toUpperCase().includes(h)));
+
+        parsed = dedupeAgendaContacts(parsed);
+
+        let added = 0;
+        parsed.forEach(c=>{
+          agendaContacts.push({id:newAgendaId(), ruta:c.ruta, telefono:c.telefono, nombre:c.nombre});
+          added++;
+        });
+        saveAgendaToStorage();
+        renderAgenda();
+        statusEl.textContent = added>0
+          ? `Listo: se extrajeron ${added} contacto(s). Revisa y corrige lo que haga falta directamente en la tabla.`
+          : 'No se identificaron filas de contacto reconocibles. Prueba con una foto más nítida o agrega los contactos manualmente.';
+      }catch(err){
+        console.error('Error en OCR', err);
+        const msg = String((err && err.message) || err);
+        if(msg.includes('SecurityError') || msg.includes('Worker') || msg.includes('blob')){
+          statusEl.textContent = 'No se pudo iniciar el motor de OCR en este entorno de vista previa. Descarga el archivo y ábrelo directamente en tu navegador (doble clic), o agrega los contactos manualmente.';
+        }else{
+          statusEl.textContent = 'No se pudo procesar la imagen. Intenta con una foto más nítida o agrega los contactos manualmente.';
         }
       }
-    }).then(result=>{
-      // Se usan las líneas ya agrupadas por Tesseract (más confiable que reagrupar palabras a mano)
-      const lines = (result.data.lines||[]).filter(l=>l.words && l.words.length>0);
-      if(lines.length===0){
-        statusEl.textContent = 'No se reconoció texto en la imagen. Prueba con una foto más nítida o agrega los contactos manualmente.';
-        return;
-      }
-      const parsed = lines
-        .map(l=>parseWordsToContact(l.words))
-        .filter(c => c.ruta || c.telefono || c.nombre)
-        .filter(c => !AGENDA_HEADER_WORDS.some(h => c.nombre.toUpperCase().includes(h)));
-
-      let added = 0;
-      parsed.forEach(c=>{
-        agendaContacts.push({id:newAgendaId(), ruta:c.ruta, telefono:c.telefono, nombre:c.nombre});
-        added++;
-      });
-      saveAgendaToStorage();
-      renderAgenda();
-      statusEl.textContent = added>0
-        ? `Listo: se extrajeron ${added} contacto(s). Revisa y corrige lo que haga falta directamente en la tabla.`
-        : 'No se identificaron filas de contacto reconocibles. Prueba con una foto más nítida o agrega los contactos manualmente.';
-    }).catch(err=>{
-      console.error('Error en OCR', err);
-      statusEl.textContent = 'No se pudo procesar la imagen. Intenta con una foto más nítida o agrega los contactos manualmente.';
-    });
+    };
+    img.onerror = ()=>{
+      URL.revokeObjectURL(objUrl);
+      statusEl.textContent = 'No se pudo cargar la imagen seleccionada.';
+    };
+    img.src = objUrl;
   });
 }
 
@@ -1552,26 +1673,38 @@ function renderAgenda(){
       || (c.ruta||'').includes(search)
       || (c.telefono||'').includes(search))
     .forEach(c=>{
-      const waValid = /^9\d{8}$/.test(c.telefono||'');
       const tr = document.createElement('tr');
+      tr.setAttribute('data-row-id', c.id);
       tr.innerHTML = `
         <td contenteditable="true" data-id="${esc(c.id)}" data-field="ruta" data-placeholder="Ruta">${esc(c.ruta||'')}</td>
         <td contenteditable="true" data-id="${esc(c.id)}" data-field="nombre" data-placeholder="Nombre">${esc(c.nombre||'')}</td>
         <td contenteditable="true" data-id="${esc(c.id)}" data-field="telefono" data-placeholder="9XXXXXXXX">${esc(c.telefono||'')}</td>
-        <td class="num">
-          <span class="agenda-actions">
-            ${waValid
-              ? `<a href="https://wa.me/51${c.telefono}" target="_blank" rel="noopener" class="agenda-btn agenda-btn-wa" title="Escribir por WhatsApp">💬</a>`
-              : `<span class="agenda-btn agenda-btn-disabled" title="Teléfono inválido para WhatsApp">💬</span>`}
-            ${waValid
-              ? `<a href="tel:+51${c.telefono}" class="agenda-btn agenda-btn-call" title="Llamar">📞</a>`
-              : `<span class="agenda-btn agenda-btn-disabled" title="Teléfono inválido">📞</span>`}
-            <span class="agenda-btn agenda-btn-del" data-id="${esc(c.id)}" title="Eliminar contacto">🗑</span>
-          </span>
-        </td>`;
+        <td class="num agenda-actions-cell" data-actions-id="${esc(c.id)}">${agendaActionsHtml(c)}</td>`;
       tbody.appendChild(tr);
     });
 
+  wireAgendaRowEvents(tbody);
+}
+
+/* HTML de los 3 botones de acción (WhatsApp / Llamar / Eliminar) para un contacto */
+function agendaActionsHtml(c){
+  const waValid = /^9\d{8}$/.test(c.telefono||'');
+  return `
+    <span class="agenda-actions">
+      ${waValid
+        ? `<a href="https://wa.me/51${c.telefono}" class="agenda-btn agenda-btn-wa" title="Escribir por WhatsApp">${AGENDA_ICON_WHATSAPP}</a>`
+        : `<span class="agenda-btn agenda-btn-disabled" title="Teléfono inválido para WhatsApp">${AGENDA_ICON_WHATSAPP}</span>`}
+      ${waValid
+        ? `<a href="tel:+51${c.telefono}" class="agenda-btn agenda-btn-call" title="Llamar">${AGENDA_ICON_CALL}</a>`
+        : `<span class="agenda-btn agenda-btn-disabled" title="Teléfono inválido">${AGENDA_ICON_CALL}</span>`}
+      <span class="agenda-btn agenda-btn-del" data-id="${esc(c.id)}" title="Eliminar contacto">🗑</span>
+    </span>`;
+}
+
+/* Conecta los eventos de edición y eliminación. Al editar, NUNCA se reconstruye toda la tabla
+   (eso desconectaría celdas contenteditable vecinas que el usuario pudiera estar editando a la
+   vez, por ejemplo al tabular de un campo a otro); solo se refrescan los botones de ESA fila. */
+function wireAgendaRowEvents(tbody){
   tbody.querySelectorAll('[contenteditable]').forEach(cell=>{
     cell.addEventListener('blur', ()=>{
       const id = cell.getAttribute('data-id');
@@ -1582,7 +1715,10 @@ function renderAgenda(){
       if(field==='ruta' || field==='telefono') val = val.replace(/[^0-9]/g,'');
       contact[field] = val;
       saveAgendaToStorage();
-      renderAgenda();
+      if(field==='telefono'){
+        const actionsCell = tbody.querySelector(`.agenda-actions-cell[data-actions-id="${CSS.escape(id)}"]`);
+        if(actionsCell) actionsCell.innerHTML = agendaActionsHtml(contact);
+      }
     });
   });
   tbody.querySelectorAll('.agenda-btn-del').forEach(btn=>{
@@ -1621,9 +1757,9 @@ function getRouteColorPalette(routeIds){
 
 function statusColorFor(s){
   if(s==='ATENDIDO') return '#3fae66';
-  if(s==='RECHAZADO') return '#d15b5b';
+  if(s==='RECHAZADO') return '#ff3b3b';
   if(s==='EN_PROGRESO') return '#d1a83f';
-  if(s==='PENDIENTE') return '#4f8fd1';
+  if(s==='PENDIENTE') return '#ff2d95';
   return '#8892a0';
 }
 
@@ -1684,6 +1820,7 @@ function buildMapPoints(){
       points.push({
         lat:loc.lat, lng:loc.lng, status,
         clientName:c.name,
+        clientCode:c.code,
         routeLabel: normalizeTransporteLabel(primaryT),
         routeColor: norm!==null && palette[norm] ? palette[norm] : '#8892a0',
         sala: chkInfo && chkInfo.sala ? chkInfo.sala : '',
@@ -1702,7 +1839,9 @@ function buildMapPoints(){
         if(!loc) return;
         const status = v.status==='DELIVERED' ? 'ATENDIDO' : v.status==='REJECTED' ? 'RECHAZADO' : 'EN_PROGRESO';
         points.push({
-          lat:loc.lat, lng:loc.lng, status, clientName:v.clientName, routeLabel,
+          lat:loc.lat, lng:loc.lng, status, clientName:v.clientName,
+          clientCode: parseInt(String(v.clientId||'').replace(/[^0-9]/g,''), 10) || null,
+          routeLabel,
           routeColor: norm!==null && palette[norm] ? palette[norm] : '#8892a0',
           sala,
           amount:v.amount
@@ -1718,6 +1857,58 @@ function buildMapPoints(){
 let mapColorMode = 'status'; // 'status' | 'route'
 const mapRouteFilterState = new Set(); // vacío = todas las rutas; si no, uno o más routeLabel
 const mapSalaFilterState = new Set();  // vacío = todas las salas; si no, una o más salas
+let currentMapPoints = []; // puntos realmente dibujados en el último render (con su marcador Leaflet)
+
+/* Buscador de clientes sobre el mapa: filtra currentMapPoints por código o nombre y, al elegir
+   un resultado, centra el mapa en ese cliente y abre su popup. */
+function closeMapClientResults(){
+  const panel = document.getElementById('mapClientResults');
+  if(panel){ panel.classList.remove('open'); panel.innerHTML = ''; }
+}
+
+function renderMapClientResults(query){
+  const panel = document.getElementById('mapClientResults');
+  if(!panel) return;
+  const q = (query||'').trim().toLowerCase();
+  if(q.length < 2){ closeMapClientResults(); return; }
+
+  const matches = currentMapPoints.filter(p =>
+    (p.clientName||'').toLowerCase().includes(q) || String(p.clientCode||'').includes(q)
+  );
+
+  if(matches.length===0){
+    panel.innerHTML = '<div class="map-client-empty">Ningún cliente visible en el mapa coincide con la búsqueda.</div>';
+    panel.classList.add('open');
+    return;
+  }
+
+  const shown = matches.slice(0, 40);
+  panel.innerHTML = shown.map((p,i)=>`
+    <div class="map-client-result" data-idx="${i}">
+      <div class="mc-name"><span class="mc-status" style="background:${statusColorFor(p.status)}"></span>${esc(p.clientName||'(sin nombre)')}</div>
+      <div class="mc-meta"><span>Código: ${esc(p.clientCode||'-')}</span><span>Ruta: ${esc(p.routeLabel)}</span><span>${esc(translateSegStatus(p.status))}</span></div>
+    </div>`).join('') + (matches.length>shown.length ? `<div class="map-client-more">y ${matches.length-shown.length} más… afina la búsqueda</div>` : '');
+  panel.classList.add('open');
+
+  panel.querySelectorAll('.map-client-result').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const p = shown[Number(el.getAttribute('data-idx'))];
+      flyToMapClient(p);
+    });
+  });
+}
+
+function flyToMapClient(p){
+  if(!p || !allRoutesMap) return;
+  allRoutesMap.setView([p.lat, p.lng], 16, {animate:true});
+  if(p.marker){
+    p.marker.openPopup();
+  }
+  closeMapClientResults();
+  const input = document.getElementById('mapClientSearch');
+  if(input) input.value = p.clientName || '';
+}
+
 
 function renderRoutesMap(){
   const container = document.getElementById('allRoutesMap');
@@ -1731,6 +1922,8 @@ function renderRoutesMap(){
   container.innerHTML = '';
   statusLegend.innerHTML = '';
   routeLegend.innerHTML = '';
+  currentMapPoints = [];
+  closeMapClientResults();
 
   if(routes.length===0 && !salesReport){
     container.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">Carga al menos una ruta o un reporte de ventas (en "Importar") para ver el mapa consolidado.</div>';
@@ -1806,9 +1999,11 @@ function renderRoutesMap(){
       fillOpacity:.9
     }).addTo(allRoutesMap);
     marker.bindPopup(`<b>${esc(p.clientName)}</b><br>Ruta: ${esc(p.routeLabel)}<br>Estado: ${esc(translateSegStatus(p.status))}<br>S/ ${p.amount.toFixed(2)}`);
+    p.marker = marker;
     bounds.push([p.lat, p.lng]);
   });
   if(bounds.length>1) allRoutesMap.fitBounds(bounds, {padding:[30,30]});
+  currentMapPoints = points;
 
   // Leyenda de estado: solo los estados que realmente aparecen entre los puntos
   const statusOrder = ['ATENDIDO','PENDIENTE','RECHAZADO','EN_PROGRESO'];
@@ -2381,6 +2576,8 @@ function safeRender(fn){
   try{ fn(); }catch(e){ console.error('Error de renderizado (no crítico):', e); }
 }
 
+let routeDetailSort = { column: null, direction: 'asc' };
+
 function renderRouteDetailTable(){
   const tbody = document.getElementById('routeDetailTbody');
   const empty = document.getElementById('routeDetailTableEmpty');
@@ -2389,34 +2586,82 @@ function renderRouteDetailTable(){
 
   if(routes.length===0){
     empty.style.display = 'block';
+    updateRouteDetailSortArrows();
     return;
   }
   empty.style.display = 'none';
 
-  routes.forEach(r=>{
+  let rows = routes.map(r=>{
     const chkInfo = getChecklistInfoForTransporte(r.transportId);
-    const routeLabel = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
+    const ruta = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
     const salesStats = getSalesStatsForRoute(r);
-
     const programados = salesStats ? salesStats.total : (r.totals.visits || 0);
     const atendidos = salesStats ? salesStats.atendidos : (r.totals.delivered || 0);
     const pendientes = Math.max(programados - atendidos, 0);
+    return { routeId:r.routeId, ruta, transporte: r.transportId||'-', programados, atendidos, pendientes };
+  });
 
+  if(routeDetailSort.column){
+    const col = routeDetailSort.column;
+    const dir = routeDetailSort.direction === 'asc' ? 1 : -1;
+    rows.sort((a,b)=>{
+      const av = a[col], bv = b[col];
+      if(typeof av === 'string' || typeof bv === 'string'){
+        return String(av).localeCompare(String(bv), undefined, {numeric:true}) * dir;
+      }
+      return (av - bv) * dir;
+    });
+  }
+
+  rows.forEach(({routeId, ruta, transporte, programados, atendidos, pendientes})=>{
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
+    tr.title = 'Ver esta ruta en el mapa de abajo';
     tr.innerHTML = `
-      <td>${esc(routeLabel)}</td>
-      <td>${esc(r.transportId||'-')}</td>
+      <td>${esc(ruta)}</td>
+      <td>${esc(transporte)}</td>
       <td class="num">${programados}</td>
       <td class="num" style="color:var(--green);">${atendidos}</td>
-      <td class="num" style="color:var(--blue);">${pendientes}</td>`;
-    tr.addEventListener('click', ()=>{
-      activeRouteId = r.routeId;
-      switchView('routeDetail');
-      renderRouteList();
-      renderRouteDetail();
+      <td class="num" style="color:var(--red);">${pendientes}</td>
+      <td class="num"><span class="chofer-del" data-id="${esc(routeId)}" title="Eliminar esta ruta">🗑</span></td>`;
+    tr.addEventListener('click', (ev)=>{
+      if(ev.target.classList.contains('chofer-del')) return;
+      // Filtra el mapa consolidado (más abajo, en esta misma vista) a solo esta ruta —
+      // ya no navega a otra pestaña.
+      mapRouteFilterState.clear();
+      mapRouteFilterState.add(ruta);
+      safeRender(renderRoutesMap);
+      const mapEl = document.getElementById('allRoutesMap');
+      if(mapEl) mapEl.scrollIntoView({behavior:'smooth', block:'center'});
     });
     tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('.chofer-del').forEach(btn=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      showConfirm('¿Eliminar esta ruta del almacenamiento local?', ()=>{
+        routes = routes.filter(r=>r.routeId!==id);
+        if(activeRouteId===id) activeRouteId = routes.length>0 ? routes[0].routeId : null;
+        saveToStorage();
+        renderAll();
+        showToast('Ruta eliminada.');
+      });
+    });
+  });
+
+  updateRouteDetailSortArrows();
+}
+
+function updateRouteDetailSortArrows(){
+  document.querySelectorAll('#view-overview th.sortable').forEach(th=>{
+    const col = th.getAttribute('data-sort');
+    const arrow = th.querySelector('.sort-arrow');
+    if(!arrow) return;
+    arrow.textContent = routeDetailSort.column === col
+      ? (routeDetailSort.direction === 'asc' ? '▲' : '▼')
+      : '';
   });
 }
 
@@ -2793,6 +3038,31 @@ document.getElementById('exportSeguimientoExcelBtn').addEventListener('click', e
 document.getElementById('mapColorModeSelect').addEventListener('change', (e)=>{
   mapColorMode = e.target.value;
   safeRender(renderRoutesMap);
+});
+
+document.getElementById('mapClientSearch').addEventListener('input', (e)=>{
+  renderMapClientResults(e.target.value);
+});
+document.getElementById('mapClientSearch').addEventListener('focus', (e)=>{
+  if(e.target.value.trim().length>=2) renderMapClientResults(e.target.value);
+});
+document.addEventListener('click', (e)=>{
+  const wrap = document.getElementById('mapClientSearchWrap');
+  if(wrap && !wrap.contains(e.target)) closeMapClientResults();
+});
+
+// Ordenar la tabla "Detalle por ruta" al hacer clic en un encabezado (asc/desc alternando)
+document.querySelectorAll('#view-overview th.sortable').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const col = th.getAttribute('data-sort');
+    if(routeDetailSort.column === col){
+      routeDetailSort.direction = routeDetailSort.direction === 'asc' ? 'desc' : 'asc';
+    }else{
+      routeDetailSort.column = col;
+      routeDetailSort.direction = 'asc';
+    }
+    safeRender(renderRouteDetailTable);
+  });
 });
 
 // Toggle de los paneles de selección múltiple (Estado / Transporte / Código / Sala)
