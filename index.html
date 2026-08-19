@@ -411,10 +411,20 @@
   #routeMap{height:360px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);}
   #allRoutesMap{height:380px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);margin-bottom:16px;}
 
-  .map-detail-row{display:grid;grid-template-columns:1.7fr 1fr;gap:18px;align-items:start;margin-bottom:20px;}
+  .map-detail-row{display:grid;grid-template-columns:1.15fr 1.35fr;gap:18px;align-items:start;margin-bottom:20px;}
   @media(max-width:1050px){.map-detail-row{grid-template-columns:1fr;}}
-  .route-detail-table-wrap{max-height:460px;overflow-y:auto;}
+  .route-detail-table-wrap{max-height:460px;overflow-y:auto;overflow-x:auto;}
+  .route-detail-table-wrap table{min-width:700px;}
   .route-detail-table-empty{padding:40px 10px;text-align:center;color:var(--text-dim);font-size:12.5px;}
+
+  .mini-map-cell{width:120px;}
+  .mini-map{width:120px;height:64px;border-radius:6px;overflow:hidden;border:1px solid var(--border);background:#20242b;}
+  .mini-map .leaflet-control-container{display:none;}
+  .mini-map-empty{
+    width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+    font-size:9.5px;color:var(--text-dim);text-align:center;padding:0 4px;
+  }
+  .map-pin-icon{background:transparent;border:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));}
 
   .map-client-search{position:relative;margin-bottom:12px;}
   .map-client-search input{width:100%;}
@@ -560,9 +570,12 @@
 
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
   @media(max-width:900px){.two-col{grid-template-columns:1fr;}}
-  .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:20px;}
-  @media(max-width:1100px){.three-col{grid-template-columns:1fr 1fr;}}
+  .three-col{display:grid;grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));gap:18px;margin-bottom:20px;}
   @media(max-width:700px){.three-col{grid-template-columns:1fr;}}
+
+  .kml-toggle-label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-dim);cursor:pointer;}
+  .kml-toggle-label input{accent-color:var(--amber);}
+  .kml-stop-icon{filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));}
 
   .bar-track{
     height:8px;background:#2b2f38;border-radius:4px;overflow:hidden;margin-top:6px;
@@ -714,6 +727,10 @@
             <option value="status">Leyenda: Status</option>
             <option value="route">Leyenda: Por Ruta</option>
           </select>
+          <label class="kml-toggle-label" id="kmlToggleWrap" style="display:none;">
+            <input type="checkbox" id="showKmlStopsToggle" checked>
+            Paradas KML (<span id="kmlToggleCount">0</span>)
+          </label>
         </div>
         <div class="map-client-search" id="mapClientSearchWrap">
           <input type="text" id="mapClientSearch" placeholder="Buscar cliente por código o nombre...">
@@ -739,9 +756,11 @@
             <thead><tr>
               <th class="sortable" data-sort="ruta">Ruta<span class="sort-arrow"></span></th>
               <th class="sortable" data-sort="transporte">Transporte<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="cajas">Cajas Prog.<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="programados">Programados<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="atendidos">Atendidos<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="pendientes">Pendientes<span class="sort-arrow"></span></th>
+              <th>Mapa</th>
               <th class="num"></th>
             </tr></thead>
             <tbody id="routeDetailTbody"></tbody>
@@ -991,6 +1010,19 @@
           <span id="maestroFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
         </div>
       </div>
+
+      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
+        <h3 style="margin-bottom:8px;font-size:12.5px;">Paradas KML</h3>
+        <div id="kmlUploadZone" class="upload-zone compact" style="margin:0;">
+          <div class="icon">📍</div>
+          <div class="txt"><b>Cargar KML</b><br>Uno o más archivos .kml con paradas/clientes</div>
+        </div>
+        <input type="file" id="kmlFileInput" accept=".kml" multiple style="display:none;">
+        <div id="kmlFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
+          <span id="kmlFileInfoText"></span>
+          <span id="kmlFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar todas</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1107,6 +1139,7 @@ function parseSalesWorkbook(arrayBuffer, fileName){
   const idxTransporte = findHeaderIndex(headers, h => h === 'transporte');
   const idxRuta = findHeaderIndex(headers, h => h === 'ruta');
   const idxTotalFact = findHeaderIndex(headers, h => h === 'total_fact');
+  const idxCajas = findHeaderIndex(headers, h => h === 'cj');
 
   if(idxCode===-1 || idxName===-1){
     throw new Error('COLUMNAS_NO_ENCONTRADAS');
@@ -1124,20 +1157,22 @@ function parseSalesWorkbook(arrayBuffer, fileName){
     const transporte = idxTransporte!==-1 ? String(row[idxTransporte]||'').trim() : '';
     const ruta = idxRuta!==-1 ? String(row[idxRuta]||'').trim() : '';
     const totalFact = idxTotalFact!==-1 ? (parseFloat(row[idxTotalFact])||0) : 0;
+    const cajas = idxCajas!==-1 ? (parseFloat(row[idxCajas])||0) : 0;
 
     if(!clientsMap[code]){
-      clientsMap[code] = {code, name, transportes:new Set(), rutas:new Set(), lineCount:0, totalFact:0};
+      clientsMap[code] = {code, name, transportes:new Set(), rutas:new Set(), lineCount:0, totalFact:0, totalCajas:0};
     }
     if(transporte) clientsMap[code].transportes.add(transporte);
     if(ruta) clientsMap[code].rutas.add(ruta);
     clientsMap[code].lineCount++;
     clientsMap[code].totalFact += totalFact;
+    clientsMap[code].totalCajas += cajas;
   }
 
   const clients = Object.values(clientsMap).map(c=>({
     code:c.code, name:c.name,
     transportes:[...c.transportes], rutas:[...c.rutas],
-    lineCount:c.lineCount, totalFact:c.totalFact
+    lineCount:c.lineCount, totalFact:c.totalFact, totalCajas:c.totalCajas
   }));
 
   if(clients.length===0) throw new Error('SIN_CLIENTES');
@@ -1473,6 +1508,130 @@ function renderImportar(){
   renderSalesFileInfo();
   renderChecklistFileInfo();
   renderMaestroFileInfo();
+  renderKmlFileInfo();
+}
+
+/* =========================================================
+   PARADAS KML — puntos adicionales (con dirección, cajas, ventana horaria y teléfono)
+   cargados desde archivos .kml, para agregar al mapa consolidado
+   ========================================================= */
+const KML_STORAGE_KEY = 'jrgrodval_kml_paradas_v1';
+let kmlStops = [];
+let showKmlStops = true;
+
+function loadKmlFromStorage(){
+  try{
+    const raw = localStorage.getItem(KML_STORAGE_KEY);
+    kmlStops = raw ? JSON.parse(raw) : [];
+  }catch(e){
+    console.error('Error leyendo paradas KML guardadas', e);
+    kmlStops = [];
+  }
+}
+function saveKmlToStorage(){
+  try{
+    localStorage.setItem(KML_STORAGE_KEY, JSON.stringify(kmlStops));
+  }catch(e){
+    showToast('No se pudo guardar las paradas KML en el almacenamiento local.');
+    console.error(e);
+  }
+}
+
+function newKmlId(){
+  return 'kml-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+}
+
+/* Analiza un .kml. Formato observado (exportado desde apps de ruteo tipo MAPS.ME):
+   <Placemark><n>|Nombre Cliente|Dirección|Cjs:NNNN|VH:HH:MM-HH:MM|Tel:NNNNNNNNN</n>
+   <styleUrl>#placemark-red</styleUrl><Point><coordinates>lon,lat</coordinates></Point></Placemark>
+   El nombre puede venir en <name> (estándar KML) o en <n> como en este caso; se aceptan ambos. */
+function parseKmlFile(text, fileName){
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(text, 'text/xml');
+  if(xml.querySelector('parsererror')) throw new Error('KML_INVALIDO');
+
+  const placemarks = [...xml.getElementsByTagName('Placemark')];
+  if(placemarks.length===0) throw new Error('SIN_PLACEMARKS');
+
+  const stops = [];
+  placemarks.forEach(pm=>{
+    const nameEl = pm.getElementsByTagName('name')[0] || pm.getElementsByTagName('n')[0];
+    const rawName = nameEl ? (nameEl.textContent||'').trim() : '';
+    const coordEl = pm.getElementsByTagName('coordinates')[0];
+    if(!coordEl) return;
+    const coordText = (coordEl.textContent||'').trim();
+    const [lonStr, latStr] = coordText.split(',');
+    const lat = parseFloat(latStr), lng = parseFloat(lonStr);
+    if(isNaN(lat) || isNaN(lng)) return;
+
+    const styleUrlEl = pm.getElementsByTagName('styleUrl')[0];
+    const styleUrl = styleUrlEl ? (styleUrlEl.textContent||'').trim() : '';
+    const styleColor = styleUrl.includes('red') ? 'red' : styleUrl.includes('blue') ? 'blue' : 'gray';
+
+    const parts = rawName.split('|').map(s=>s.trim());
+    let clientName = '', address = '', cajas = null, ventanaHoraria = '', telefono = '';
+    if(parts.length > 1){
+      clientName = parts[1] || '';
+      address = parts[2] || '';
+      parts.slice(3).forEach(p=>{
+        if(/^Cjs:/i.test(p)) cajas = parseInt(p.replace(/[^0-9]/g,''), 10) || 0;
+        else if(/^VH:/i.test(p)) ventanaHoraria = p.replace(/^VH:/i,'').trim();
+        else if(/^Tel:/i.test(p)) telefono = p.replace(/^Tel:/i,'').replace(/[^0-9]/g,'');
+      });
+    }else{
+      clientName = rawName || 'Parada sin nombre';
+    }
+
+    stops.push({
+      id:newKmlId(), clientName, address, cajas, ventanaHoraria, telefono,
+      lat, lng, styleColor, sourceFile:fileName
+    });
+  });
+
+  if(stops.length===0) throw new Error('SIN_COORDENADAS');
+  return stops;
+}
+
+function handleKmlFiles(fileList){
+  const files = Array.from(fileList);
+  if(files.length===0) return;
+  let added = 0, failed = 0;
+  let pending = files.length;
+
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      try{
+        const stops = parseKmlFile(e.target.result, file.name);
+        kmlStops = kmlStops.concat(stops);
+        added += stops.length;
+      }catch(err){
+        console.error('Error parseando KML', file.name, err);
+        failed++;
+      }
+      pending--;
+      if(pending===0){
+        saveKmlToStorage();
+        renderKmlFileInfo();
+        safeRender(renderRoutesMap);
+        let msg = added+' parada(s) agregada(s) desde KML';
+        if(failed>0) msg += ', '+failed+' archivo(s) con error';
+        showToast(msg);
+      }
+    };
+    reader.onerror = ()=>{ failed++; pending--; };
+    reader.readAsText(file);
+  });
+}
+
+function renderKmlFileInfo(){
+  const info = document.getElementById('kmlFileInfo');
+  const text = document.getElementById('kmlFileInfoText');
+  if(!info || !text) return;
+  if(kmlStops.length===0){ info.style.display='none'; return; }
+  info.style.display='block';
+  const sourceCount = new Set(kmlStops.map(s=>s.sourceFile)).size;
+  text.textContent = `${kmlStops.length} parada(s) cargada(s) de ${sourceCount} archivo(s)`;
 }
 
 /* =========================================================
@@ -1744,6 +1903,32 @@ function getMaestroCoords(clientId){
   return {lat:c.lat, lng:c.lng};
 }
 
+function getMaestroAddress(clientId){
+  if(!clientesMaestro || !clientId) return '';
+  const code = parseInt(String(clientId).replace(/[^0-9]/g,''), 10);
+  if(isNaN(code)) return '';
+  const c = clientesMaestro.clients[code];
+  return c && c.address ? c.address : '';
+}
+
+/* Ícono tipo "pin" (gota), como los marcadores de una app de navegación/reparto, en vez de
+   un simple círculo plano. Se dibuja como SVG en línea (sin depender de imágenes externas). */
+function pinDivIcon(color, size){
+  size = size || 26;
+  const h = Math.round(size*1.3);
+  const svg = `<svg width="${size}" height="${h}" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">
+    <path d="M13 0C5.8 0 0 5.8 0 13c0 9.7 13 21 13 21s13-11.3 13-21C26 5.8 20.2 0 13 0z" fill="${color}" stroke="#14161a" stroke-width="1.5"/>
+    <circle cx="13" cy="13" r="5" fill="#fff"/>
+  </svg>`;
+  return L.divIcon({
+    html: svg,
+    className: 'map-pin-icon',
+    iconSize: [size, h],
+    iconAnchor: [size/2, h],
+    popupAnchor: [0, -h+4]
+  });
+}
+
 /* Genera un color distinto (HSL con tono distribuido) por cada ruta cargada */
 function getRouteColorPalette(routeIds){
   const n = routeIds.length;
@@ -1821,6 +2006,8 @@ function buildMapPoints(){
         lat:loc.lat, lng:loc.lng, status,
         clientName:c.name,
         clientCode:c.code,
+        address: getMaestroAddress(c.code),
+        cajas: c.totalCajas || 0,
         routeLabel: normalizeTransporteLabel(primaryT),
         routeColor: norm!==null && palette[norm] ? palette[norm] : '#8892a0',
         sala: chkInfo && chkInfo.sala ? chkInfo.sala : '',
@@ -1841,6 +2028,8 @@ function buildMapPoints(){
         points.push({
           lat:loc.lat, lng:loc.lng, status, clientName:v.clientName,
           clientCode: parseInt(String(v.clientId||'').replace(/[^0-9]/g,''), 10) || null,
+          address: getMaestroAddress(v.clientId),
+          cajas: 0,
           routeLabel,
           routeColor: norm!==null && palette[norm] ? palette[norm] : '#8892a0',
           sala,
@@ -1858,6 +2047,7 @@ let mapColorMode = 'status'; // 'status' | 'route'
 const mapRouteFilterState = new Set(); // vacío = todas las rutas; si no, uno o más routeLabel
 const mapSalaFilterState = new Set();  // vacío = todas las salas; si no, una o más salas
 let currentMapPoints = []; // puntos realmente dibujados en el último render (con su marcador Leaflet)
+let currentKmlPoints = []; // paradas KML realmente dibujadas en el último render
 
 /* Buscador de clientes sobre el mapa: filtra currentMapPoints por código o nombre y, al elegir
    un resultado, centra el mapa en ese cliente y abre su popup. */
@@ -1875,19 +2065,33 @@ function renderMapClientResults(query){
   const matches = currentMapPoints.filter(p =>
     (p.clientName||'').toLowerCase().includes(q) || String(p.clientCode||'').includes(q)
   );
+  const kmlMatches = currentKmlPoints.filter(s =>
+    (s.clientName||'').toLowerCase().includes(q) || (s.address||'').toLowerCase().includes(q)
+  );
+  const allMatches = matches.concat(kmlMatches);
 
-  if(matches.length===0){
-    panel.innerHTML = '<div class="map-client-empty">Ningún cliente visible en el mapa coincide con la búsqueda.</div>';
+  if(allMatches.length===0){
+    panel.innerHTML = '<div class="map-client-empty">Ningún cliente ni parada visible en el mapa coincide con la búsqueda.</div>';
     panel.classList.add('open');
     return;
   }
 
-  const shown = matches.slice(0, 40);
-  panel.innerHTML = shown.map((p,i)=>`
-    <div class="map-client-result" data-idx="${i}">
-      <div class="mc-name"><span class="mc-status" style="background:${statusColorFor(p.status)}"></span>${esc(p.clientName||'(sin nombre)')}</div>
-      <div class="mc-meta"><span>Código: ${esc(p.clientCode||'-')}</span><span>Ruta: ${esc(p.routeLabel)}</span><span>${esc(translateSegStatus(p.status))}</span></div>
-    </div>`).join('') + (matches.length>shown.length ? `<div class="map-client-more">y ${matches.length-shown.length} más… afina la búsqueda</div>` : '');
+  const shown = allMatches.slice(0, 40);
+  panel.innerHTML = shown.map((p,i)=>{
+    const isKml = !!p.styleColor;
+    if(isKml){
+      return `
+      <div class="map-client-result" data-idx="${i}">
+        <div class="mc-name"><span class="mc-status" style="background:#e0a527;"></span>${esc(p.clientName||'(sin nombre)')} <span style="color:var(--text-dim);font-weight:400;">· KML</span></div>
+        <div class="mc-meta"><span>${esc(p.address||'-')}</span></div>
+      </div>`;
+    }
+    return `
+      <div class="map-client-result" data-idx="${i}">
+        <div class="mc-name"><span class="mc-status" style="background:${statusColorFor(p.status)}"></span>${esc(p.clientName||'(sin nombre)')}</div>
+        <div class="mc-meta"><span>Código: ${esc(p.clientCode||'-')}</span><span>Ruta: ${esc(p.routeLabel)}</span><span>${esc(translateSegStatus(p.status))}</span></div>
+      </div>`;
+  }).join('') + (allMatches.length>shown.length ? `<div class="map-client-more">y ${allMatches.length-shown.length} más… afina la búsqueda</div>` : '');
   panel.classList.add('open');
 
   panel.querySelectorAll('.map-client-result').forEach(el=>{
@@ -1923,10 +2127,11 @@ function renderRoutesMap(){
   statusLegend.innerHTML = '';
   routeLegend.innerHTML = '';
   currentMapPoints = [];
+  currentKmlPoints = [];
   closeMapClientResults();
 
-  if(routes.length===0 && !salesReport){
-    container.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">Carga al menos una ruta o un reporte de ventas (en "Importar") para ver el mapa consolidado.</div>';
+  if(routes.length===0 && !salesReport && kmlStops.length===0){
+    container.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">Carga al menos una ruta, un reporte de ventas o un KML de paradas (en "Importar") para ver el mapa consolidado.</div>';
     if(statusWrap) statusWrap.style.display='none';
     if(routeWrap) routeWrap.style.display='none';
     buildMultiSelect(mapRouteFilterState, 'mapRouteFilterBtn', 'mapRouteFilterPanel', [], 'Todas las rutas', false, '', ()=>safeRender(renderRoutesMap));
@@ -1968,7 +2173,17 @@ function renderRoutesMap(){
     ? points.filter(p=>mapSalaFilterState.has(p.sala))
     : points;
 
-  if(points.length===0){
+  // Toggle de paradas KML: solo se ofrece si hay alguna cargada
+  const kmlToggleWrap = document.getElementById('kmlToggleWrap');
+  const kmlToggleCount = document.getElementById('kmlToggleCount');
+  const kmlToggleInput = document.getElementById('showKmlStopsToggle');
+  if(kmlToggleWrap){
+    kmlToggleWrap.style.display = kmlStops.length>0 ? 'flex' : 'none';
+  }
+  if(kmlToggleCount) kmlToggleCount.textContent = kmlStops.length;
+  const kmlPoints = (kmlStops.length>0 && kmlToggleInput && kmlToggleInput.checked) ? kmlStops : [];
+
+  if(points.length===0 && kmlPoints.length===0){
     container.innerHTML = (mapRouteFilterState.size>0 || mapSalaFilterState.size>0)
       ? '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">No hay clientes con coordenadas disponibles para el filtro elegido.</div>'
       : (salesReport
@@ -1979,11 +2194,12 @@ function renderRoutesMap(){
     return;
   }
 
-  if(statusWrap) statusWrap.style.display = mapColorMode==='status' ? 'block' : 'none';
-  if(routeWrap) routeWrap.style.display = mapColorMode==='route' ? 'block' : 'none';
+  if(statusWrap) statusWrap.style.display = (mapColorMode==='status' && points.length>0) ? 'block' : 'none';
+  if(routeWrap) routeWrap.style.display = (mapColorMode==='route' && points.length>0) ? 'block' : 'none';
 
-  const avgLat = points.reduce((s,p)=>s+p.lat,0)/points.length;
-  const avgLng = points.reduce((s,p)=>s+p.lng,0)/points.length;
+  const centerSource = points.length>0 ? points : kmlPoints;
+  const avgLat = centerSource.reduce((s,p)=>s+p.lat,0)/centerSource.length;
+  const avgLng = centerSource.reduce((s,p)=>s+p.lng,0)/centerSource.length;
   allRoutesMap = L.map(container, {scrollWheelZoom:true}).setView([avgLat, avgLng], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution:'&copy; OpenStreetMap contributors', maxZoom:19
@@ -1992,18 +2208,40 @@ function renderRoutesMap(){
   const bounds = [];
   points.forEach(p=>{
     const color = mapColorMode==='status' ? statusColorFor(p.status) : p.routeColor;
-    const marker = L.circleMarker([p.lat, p.lng], {
-      radius:7, weight:1.5,
-      color:'#14161a',
-      fillColor: color,
-      fillOpacity:.9
-    }).addTo(allRoutesMap);
-    marker.bindPopup(`<b>${esc(p.clientName)}</b><br>Ruta: ${esc(p.routeLabel)}<br>Estado: ${esc(translateSegStatus(p.status))}<br>S/ ${p.amount.toFixed(2)}`);
+    const marker = L.marker([p.lat, p.lng], {icon: pinDivIcon(color, 26)}).addTo(allRoutesMap);
+    const infoLines = [`<b>${esc(p.clientName)}</b>`];
+    if(p.clientCode) infoLines.push(`Código: ${esc(p.clientCode)}`);
+    if(p.address) infoLines.push(esc(p.address));
+    infoLines.push(`Ruta: ${esc(p.routeLabel)}`);
+    infoLines.push(`Estado: ${esc(translateSegStatus(p.status))}`);
+    if(p.cajas) infoLines.push(`Cajas: ${esc(Math.round(p.cajas))}`);
+    infoLines.push(`S/ ${p.amount.toFixed(2)}`);
+    marker.bindPopup(infoLines.join('<br>'));
     p.marker = marker;
     bounds.push([p.lat, p.lng]);
   });
+
+  // Paradas KML: ícono distinto (pin), con la info propia del archivo (dirección, cajas, etc.)
+  kmlPoints.forEach(s=>{
+    const icon = L.divIcon({
+      html: `<div style="font-size:22px;line-height:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));">📍</div>`,
+      className: 'kml-stop-icon', iconSize:[22,22], iconAnchor:[11,20]
+    });
+    const marker = L.marker([s.lat, s.lng], {icon}).addTo(allRoutesMap);
+    const infoLines = [`<b>${esc(s.clientName)}</b>`];
+    if(s.address) infoLines.push(esc(s.address));
+    if(s.cajas!==null && s.cajas!==undefined) infoLines.push(`Cajas: ${esc(s.cajas)}`);
+    if(s.ventanaHoraria) infoLines.push(`Ventana horaria: ${esc(s.ventanaHoraria)}`);
+    if(s.telefono) infoLines.push(`Tel: ${esc(s.telefono)}`);
+    marker.bindPopup(infoLines.join('<br>'));
+    s.marker = marker;
+    bounds.push([s.lat, s.lng]);
+  });
+
   if(bounds.length>1) allRoutesMap.fitBounds(bounds, {padding:[30,30]});
+  else if(bounds.length===1) allRoutesMap.setView(bounds[0], 15);
   currentMapPoints = points;
+  currentKmlPoints = kmlPoints;
 
   // Leyenda de estado: solo los estados que realmente aparecen entre los puntos
   const statusOrder = ['ATENDIDO','PENDIENTE','RECHAZADO','EN_PROGRESO'];
@@ -2052,21 +2290,27 @@ function normalizeTransporteNum(t){
 
 /* Para una ruta cargada (JSON), busca en el reporte de ventas cuántos clientes le corresponden
    (por transporte) y cuántos de esos ya están atendidos (entregados) según las rutas cargadas. */
-function getSalesStatsForRoute(route){
-  if(!salesReport || !route.transportId) return null;
-  const target = normalizeTransporteNum(route.transportId);
-  if(target===null) return null;
+function getSalesStatsForTransporte(target){
+  if(!salesReport || target===null || target===undefined || isNaN(target)) return null;
   const visitMap = getClientVisitStatusMap();
-  let total = 0, atendidos = 0;
+  let total = 0, atendidos = 0, cajas = 0;
   salesReport.clients.forEach(c=>{
     const matches = c.transportes.some(t => normalizeTransporteNum(t)===target);
     if(!matches) return;
     total++;
+    cajas += (c.totalCajas||0);
     const v = visitMap[c.code];
     if(v && v.delivered) atendidos++;
   });
   if(total===0) return null;
-  return {total, atendidos, pct: (atendidos/total)*100};
+  return {total, atendidos, cajas, pct: (atendidos/total)*100};
+}
+
+function getSalesStatsForRoute(route){
+  if(!salesReport || !route.transportId) return null;
+  const target = normalizeTransporteNum(route.transportId);
+  if(target===null) return null;
+  return getSalesStatsForTransporte(target);
 }
 
 /* Cruce: por cada cliente del reporte, revisa el estado de sus visitas en las rutas cargadas */
@@ -2578,28 +2822,67 @@ function safeRender(fn){
 
 let routeDetailSort = { column: null, direction: 'asc' };
 
+let miniMapInstances = {};
+
+function buildRouteDetailRows(){
+  // Si hay reporte de ventas, se listan TODAS sus rutas (aunque todavía no hayas cargado el
+  // JSON de esa ruta) — "Atendidos/Pendientes" se completan solos en cuanto cargues el JSON
+  // correspondiente. Sin reporte de ventas, se usa como respaldo solo lo que ya cargaste.
+  if(salesReport){
+    const allTransportesSet = new Set();
+    salesReport.clients.forEach(c=> c.transportes.forEach(t=>{
+      const n = normalizeTransporteNum(t); if(n!==null) allTransportesSet.add(n);
+    }));
+    return [...allTransportesSet].map(target=>{
+      const loadedRoute = routes.find(r=>normalizeTransporteNum(r.transportId)===target);
+      const stats = getSalesStatsForTransporte(target);
+      const chkInfo = getChecklistInfoForTransporte(String(target));
+      const ruta = chkInfo && chkInfo.codigo ? chkInfo.codigo : String(target);
+      const programados = stats ? stats.total : 0;
+      const cajas = stats ? Math.round(stats.cajas) : 0;
+      const atendidos = stats ? stats.atendidos : 0;
+      const pendientes = Math.max(programados - atendidos, 0);
+      return {
+        routeId: loadedRoute ? loadedRoute.routeId : null,
+        ruta, transporte: loadedRoute ? loadedRoute.transportId : String(target),
+        cajas, programados, atendidos, pendientes
+      };
+    });
+  }
+  return routes.map(r=>{
+    const chkInfo = getChecklistInfoForTransporte(r.transportId);
+    const ruta = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
+    const programados = r.totals.visits || 0;
+    const atendidos = r.totals.delivered || 0;
+    const pendientes = Math.max(programados - atendidos, 0);
+    return { routeId:r.routeId, ruta, transporte: r.transportId||'-', cajas:0, programados, atendidos, pendientes };
+  });
+}
+
 function renderRouteDetailTable(){
   const tbody = document.getElementById('routeDetailTbody');
   const empty = document.getElementById('routeDetailTableEmpty');
   if(!tbody || !empty) return;
+
+  // Limpiar los mini-mapas de la tabla anterior antes de reconstruirla
+  Object.values(miniMapInstances).forEach(m=>{ try{ m.remove(); }catch(e){} });
+  miniMapInstances = {};
   tbody.innerHTML = '';
 
-  if(routes.length===0){
+  if(routes.length===0 && !salesReport){
     empty.style.display = 'block';
     updateRouteDetailSortArrows();
     return;
   }
   empty.style.display = 'none';
 
-  let rows = routes.map(r=>{
-    const chkInfo = getChecklistInfoForTransporte(r.transportId);
-    const ruta = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
-    const salesStats = getSalesStatsForRoute(r);
-    const programados = salesStats ? salesStats.total : (r.totals.visits || 0);
-    const atendidos = salesStats ? salesStats.atendidos : (r.totals.delivered || 0);
-    const pendientes = Math.max(programados - atendidos, 0);
-    return { routeId:r.routeId, ruta, transporte: r.transportId||'-', programados, atendidos, pendientes };
-  });
+  let rows = buildRouteDetailRows();
+
+  if(rows.length===0){
+    empty.style.display = 'block';
+    updateRouteDetailSortArrows();
+    return;
+  }
 
   if(routeDetailSort.column){
     const col = routeDetailSort.column;
@@ -2613,20 +2896,25 @@ function renderRouteDetailTable(){
     });
   }
 
-  rows.forEach(({routeId, ruta, transporte, programados, atendidos, pendientes})=>{
+  const allMapPoints = buildMapPoints();
+
+  rows.forEach(({routeId, ruta, transporte, cajas, programados, atendidos, pendientes}, idx)=>{
+    const miniMapId = 'mini-map-'+idx;
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
-    tr.title = 'Ver esta ruta en el mapa de abajo';
+    tr.title = 'Ver esta ruta en el mapa de arriba';
     tr.innerHTML = `
       <td>${esc(ruta)}</td>
       <td>${esc(transporte)}</td>
+      <td class="num">${cajas || '—'}</td>
       <td class="num">${programados}</td>
       <td class="num" style="color:var(--green);">${atendidos}</td>
       <td class="num" style="color:var(--red);">${pendientes}</td>
-      <td class="num"><span class="chofer-del" data-id="${esc(routeId)}" title="Eliminar esta ruta">🗑</span></td>`;
+      <td class="mini-map-cell"><div class="mini-map" id="${miniMapId}"></div></td>
+      <td class="num">${routeId ? `<span class="chofer-del" data-id="${esc(routeId)}" title="Eliminar esta ruta">🗑</span>` : ''}</td>`;
     tr.addEventListener('click', (ev)=>{
-      if(ev.target.classList.contains('chofer-del')) return;
-      // Filtra el mapa consolidado (más abajo, en esta misma vista) a solo esta ruta —
+      if(ev.target.closest('.chofer-del') || ev.target.closest('.mini-map-cell')) return;
+      // Filtra el mapa consolidado (más arriba, en esta misma vista) a solo esta ruta —
       // ya no navega a otra pestaña.
       mapRouteFilterState.clear();
       mapRouteFilterState.add(ruta);
@@ -2651,7 +2939,45 @@ function renderRouteDetailTable(){
     });
   });
 
+  // Mini-mapa por fila, con los clientes de esa ruta (mismos puntos que el mapa consolidado)
+  rows.forEach(({ruta}, idx)=>{
+    safeRender(()=> renderMiniRouteMap('mini-map-'+idx, allMapPoints.filter(p=>p.routeLabel===ruta)));
+  });
+
   updateRouteDetailSortArrows();
+}
+
+function renderMiniRouteMap(containerId, points){
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  if(miniMapInstances[containerId]){ try{ miniMapInstances[containerId].remove(); }catch(e){} delete miniMapInstances[containerId]; }
+  container.innerHTML = '';
+
+  if(typeof L === 'undefined'){
+    container.innerHTML = '<div class="mini-map-empty">Mapa no disponible</div>';
+    return;
+  }
+  if(!points || points.length===0){
+    container.innerHTML = '<div class="mini-map-empty">Sin coordenadas</div>';
+    return;
+  }
+
+  const map = L.map(container, {
+    zoomControl:false, attributionControl:false, dragging:false,
+    scrollWheelZoom:false, doubleClickZoom:false, boxZoom:false,
+    keyboard:false, touchZoom:false, tap:false
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(map);
+
+  const bounds = [];
+  points.forEach(p=>{
+    L.marker([p.lat, p.lng], {icon: pinDivIcon(statusColorFor(p.status), 13)}).addTo(map);
+    bounds.push([p.lat, p.lng]);
+  });
+  if(bounds.length===1){ map.setView(bounds[0], 14); }
+  else{ map.fitBounds(bounds, {padding:[8,8]}); }
+
+  miniMapInstances[containerId] = map;
 }
 
 function updateRouteDetailSortArrows(){
@@ -2722,10 +3048,13 @@ function renderRouteMap(route){
   const colorFor = s => s==='DELIVERED' ? '#3fae66' : s==='REJECTED' ? '#d15b5b' : '#d1a83f';
   const bounds = [];
   withLoc.forEach((v,i)=>{
-    const marker = L.circleMarker([v.location.lat, v.location.lng], {
-      radius:7, color:colorFor(v.status), fillColor:colorFor(v.status), fillOpacity:.85, weight:1.5
-    }).addTo(leafletMap);
-    marker.bindPopup(`<b>${esc(v.clientName)}</b><br>${esc(v.status)}${v.reason?(' ('+esc(v.reason)+')'):''}<br>S/ ${v.amount.toFixed(2)}`);
+    const marker = L.marker([v.location.lat, v.location.lng], {icon: pinDivIcon(colorFor(v.status), 26)}).addTo(leafletMap);
+    const infoLines = [`<b>${esc(v.clientName)}</b>`];
+    const addr = getMaestroAddress(v.clientId);
+    if(addr) infoLines.push(esc(addr));
+    infoLines.push(`${esc(v.status)}${v.reason?(' ('+esc(v.reason)+')'):''}`);
+    infoLines.push(`S/ ${v.amount.toFixed(2)}`);
+    marker.bindPopup(infoLines.join('<br>'));
     bounds.push([v.location.lat, v.location.lng]);
   });
   if(bounds.length>1) leafletMap.fitBounds(bounds, {padding:[30,30]});
@@ -3011,6 +3340,33 @@ document.getElementById('maestroFileRemove').addEventListener('click', ()=>{
   });
 });
 
+const kmlUploadZone = document.getElementById('kmlUploadZone');
+const kmlFileInput = document.getElementById('kmlFileInput');
+kmlUploadZone.addEventListener('click', ()=>kmlFileInput.click());
+kmlFileInput.addEventListener('change', e=>{
+  if(e.target.files && e.target.files.length) handleKmlFiles(e.target.files);
+  kmlFileInput.value='';
+});
+kmlUploadZone.addEventListener('dragover', e=>{ e.preventDefault(); kmlUploadZone.classList.add('dragover'); });
+kmlUploadZone.addEventListener('dragleave', ()=> kmlUploadZone.classList.remove('dragover'));
+kmlUploadZone.addEventListener('drop', e=>{
+  e.preventDefault();
+  kmlUploadZone.classList.remove('dragover');
+  if(e.dataTransfer.files && e.dataTransfer.files.length) handleKmlFiles(e.dataTransfer.files);
+});
+document.getElementById('kmlFileRemove').addEventListener('click', ()=>{
+  showConfirm('¿Quitar todas las paradas KML cargadas?', ()=>{
+    kmlStops = [];
+    saveKmlToStorage();
+    renderKmlFileInfo();
+    safeRender(renderRoutesMap);
+    showToast('Paradas KML quitadas.');
+  });
+});
+document.getElementById('showKmlStopsToggle').addEventListener('change', ()=>{
+  safeRender(renderRoutesMap);
+});
+
 const agendaUploadZone = document.getElementById('agendaUploadZone');
 const agendaFileInput = document.getElementById('agendaFileInput');
 agendaUploadZone.addEventListener('click', ()=>agendaFileInput.click());
@@ -3261,6 +3617,7 @@ loadFromStorage();
 loadSalesFromStorage();
 loadChecklistFromStorage();
 loadMaestroFromStorage();
+loadKmlFromStorage();
 loadAgendaFromStorage();
 updateStorageInfo();
 renderAll();
