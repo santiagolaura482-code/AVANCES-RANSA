@@ -1044,6 +1044,7 @@
       <div class="filter-row">
         <input type="text" id="agendaSearch" placeholder="Buscar por nombre, ruta o teléfono...">
         <button id="agendaAddBtn" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;">+ Agregar contacto</button>
+        <button id="agendaClearBtn" style="background:var(--panel2);border:1px solid var(--red);color:var(--red);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;">🗑 Limpiar agenda</button>
       </div>
       <table>
         <thead><tr>
@@ -3250,6 +3251,15 @@ document.getElementById('agendaAddBtn').addEventListener('click', ()=>{
   renderAgenda();
 });
 document.getElementById('agendaSearch').addEventListener('input', renderAgenda);
+document.getElementById('agendaClearBtn').addEventListener('click', ()=>{
+  if(agendaContacts.length===0) return;
+  showConfirm('¿Borrar todos los contactos de la agenda? Esta acción no se puede deshacer.', ()=>{
+    agendaContacts = [];
+    saveAgendaToStorage();
+    renderAgenda();
+    showToast('Agenda limpiada.');
+  });
+});
 
 // Pegar una imagen directamente (Ctrl+V) mientras se está en la pestaña Agenda: la procesa
 // igual que si se hubiera cargado por el selector de archivos. No interfiere con pegar texto
