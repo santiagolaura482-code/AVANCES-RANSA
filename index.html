@@ -413,18 +413,34 @@
 
   .map-detail-row{display:grid;grid-template-columns:1.15fr 1.35fr;gap:18px;align-items:start;margin-bottom:20px;}
   @media(max-width:1050px){.map-detail-row{grid-template-columns:1fr;}}
-  .route-detail-table-wrap{max-height:460px;overflow-y:auto;overflow-x:auto;}
-  .route-detail-table-wrap table{min-width:700px;}
+  .route-detail-table-wrap{max-height:400px;overflow-y:auto;overflow-x:auto;}
+  .route-detail-table-wrap table{min-width:600px;}
   .route-detail-table-empty{padding:40px 10px;text-align:center;color:var(--text-dim);font-size:12.5px;}
 
-  .mini-map-cell{width:120px;}
-  .mini-map{width:120px;height:64px;border-radius:6px;overflow:hidden;border:1px solid var(--border);background:#20242b;}
-  .mini-map .leaflet-control-container{display:none;}
-  .mini-map-empty{
-    width:100%;height:100%;display:flex;align-items:center;justify-content:center;
-    font-size:9.5px;color:var(--text-dim);text-align:center;padding:0 4px;
+  .route-map-btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:6px 14px;
+    border:1px solid var(--green);
+    border-radius:8px;
+    background:rgba(63,174,102,.12);
+    color:var(--green);
+    font-size:12px;font-weight:600;
+    cursor:pointer;white-space:nowrap;
+    transition:.12s;
   }
+  .route-map-btn:hover{background:rgba(63,174,102,.24);}
   .map-pin-icon{background:transparent;border:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));}
+
+  .agenda-preview-warning{
+    background:rgba(224,165,39,.1);
+    border:1px solid var(--amber);
+    border-radius:var(--radius);
+    padding:12px 16px;
+    margin-bottom:16px;
+    font-size:12.5px;
+    line-height:1.6;
+    color:var(--text);
+  }
 
   .map-client-search{position:relative;margin-bottom:12px;}
   .map-client-search input{width:100%;}
@@ -572,10 +588,6 @@
   @media(max-width:900px){.two-col{grid-template-columns:1fr;}}
   .three-col{display:grid;grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));gap:18px;margin-bottom:20px;}
   @media(max-width:700px){.three-col{grid-template-columns:1fr;}}
-
-  .kml-toggle-label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-dim);cursor:pointer;}
-  .kml-toggle-label input{accent-color:var(--amber);}
-  .kml-stop-icon{filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));}
 
   .bar-track{
     height:8px;background:#2b2f38;border-radius:4px;overflow:hidden;margin-top:6px;
@@ -727,10 +739,6 @@
             <option value="status">Leyenda: Status</option>
             <option value="route">Leyenda: Por Ruta</option>
           </select>
-          <label class="kml-toggle-label" id="kmlToggleWrap" style="display:none;">
-            <input type="checkbox" id="showKmlStopsToggle" checked>
-            Paradas KML (<span id="kmlToggleCount">0</span>)
-          </label>
         </div>
         <div class="map-client-search" id="mapClientSearchWrap">
           <input type="text" id="mapClientSearch" placeholder="Buscar cliente por código o nombre...">
@@ -1010,19 +1018,6 @@
           <span id="maestroFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
         </div>
       </div>
-
-      <div class="panel" style="margin-bottom:0;padding:14px 16px;">
-        <h3 style="margin-bottom:8px;font-size:12.5px;">Paradas KML</h3>
-        <div id="kmlUploadZone" class="upload-zone compact" style="margin:0;">
-          <div class="icon">📍</div>
-          <div class="txt"><b>Cargar KML</b><br>Uno o más archivos .kml con paradas/clientes</div>
-        </div>
-        <input type="file" id="kmlFileInput" accept=".kml" multiple style="display:none;">
-        <div id="kmlFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
-          <span id="kmlFileInfoText"></span>
-          <span id="kmlFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar todas</span>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1031,11 +1026,15 @@
     <h2 class="view-title">Agenda</h2>
     <div class="view-sub">Sube una foto de la lista de rutas y choferes: se extraen los contactos automáticamente (revisa y corrige lo que haga falta).</div>
 
+    <div id="agendaPreviewWarning" class="agenda-preview-warning" style="display:none;">
+      ⚠️ Estás viendo este archivo dentro de la vista previa de Claude, que bloquea por seguridad la función que necesita el reconocimiento automático de imagen. <b>Descarga el archivo y ábrelo directamente en tu navegador</b> (doble clic) para usar esta función — ahí sí funciona. Mientras tanto puedes agregar los contactos a mano con "+ Agregar contacto" más abajo.
+    </div>
+
     <div class="panel" style="margin-bottom:20px;padding:14px 16px;">
       <h3 style="margin-bottom:8px;font-size:12.5px;">Cargar imagen</h3>
       <div id="agendaUploadZone" class="upload-zone compact" style="margin:0;max-width:460px;">
         <div class="icon">📷</div>
-        <div class="txt"><b>Cargar Imagen</b><br>Foto o captura de la lista de rutas / choferes (JPG, PNG)</div>
+        <div class="txt"><b>Cargar Imagen</b><br>Foto o captura de la lista de rutas / choferes (JPG, PNG) — o pega una imagen con Ctrl+V</div>
       </div>
       <input type="file" id="agendaFileInput" accept="image/*" style="display:none;">
       <div id="agendaOcrStatus" style="margin-top:10px;font-size:12px;color:var(--text-dim);display:none;"></div>
@@ -1508,130 +1507,6 @@ function renderImportar(){
   renderSalesFileInfo();
   renderChecklistFileInfo();
   renderMaestroFileInfo();
-  renderKmlFileInfo();
-}
-
-/* =========================================================
-   PARADAS KML — puntos adicionales (con dirección, cajas, ventana horaria y teléfono)
-   cargados desde archivos .kml, para agregar al mapa consolidado
-   ========================================================= */
-const KML_STORAGE_KEY = 'jrgrodval_kml_paradas_v1';
-let kmlStops = [];
-let showKmlStops = true;
-
-function loadKmlFromStorage(){
-  try{
-    const raw = localStorage.getItem(KML_STORAGE_KEY);
-    kmlStops = raw ? JSON.parse(raw) : [];
-  }catch(e){
-    console.error('Error leyendo paradas KML guardadas', e);
-    kmlStops = [];
-  }
-}
-function saveKmlToStorage(){
-  try{
-    localStorage.setItem(KML_STORAGE_KEY, JSON.stringify(kmlStops));
-  }catch(e){
-    showToast('No se pudo guardar las paradas KML en el almacenamiento local.');
-    console.error(e);
-  }
-}
-
-function newKmlId(){
-  return 'kml-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
-}
-
-/* Analiza un .kml. Formato observado (exportado desde apps de ruteo tipo MAPS.ME):
-   <Placemark><n>|Nombre Cliente|Dirección|Cjs:NNNN|VH:HH:MM-HH:MM|Tel:NNNNNNNNN</n>
-   <styleUrl>#placemark-red</styleUrl><Point><coordinates>lon,lat</coordinates></Point></Placemark>
-   El nombre puede venir en <name> (estándar KML) o en <n> como en este caso; se aceptan ambos. */
-function parseKmlFile(text, fileName){
-  const parser = new DOMParser();
-  const xml = parser.parseFromString(text, 'text/xml');
-  if(xml.querySelector('parsererror')) throw new Error('KML_INVALIDO');
-
-  const placemarks = [...xml.getElementsByTagName('Placemark')];
-  if(placemarks.length===0) throw new Error('SIN_PLACEMARKS');
-
-  const stops = [];
-  placemarks.forEach(pm=>{
-    const nameEl = pm.getElementsByTagName('name')[0] || pm.getElementsByTagName('n')[0];
-    const rawName = nameEl ? (nameEl.textContent||'').trim() : '';
-    const coordEl = pm.getElementsByTagName('coordinates')[0];
-    if(!coordEl) return;
-    const coordText = (coordEl.textContent||'').trim();
-    const [lonStr, latStr] = coordText.split(',');
-    const lat = parseFloat(latStr), lng = parseFloat(lonStr);
-    if(isNaN(lat) || isNaN(lng)) return;
-
-    const styleUrlEl = pm.getElementsByTagName('styleUrl')[0];
-    const styleUrl = styleUrlEl ? (styleUrlEl.textContent||'').trim() : '';
-    const styleColor = styleUrl.includes('red') ? 'red' : styleUrl.includes('blue') ? 'blue' : 'gray';
-
-    const parts = rawName.split('|').map(s=>s.trim());
-    let clientName = '', address = '', cajas = null, ventanaHoraria = '', telefono = '';
-    if(parts.length > 1){
-      clientName = parts[1] || '';
-      address = parts[2] || '';
-      parts.slice(3).forEach(p=>{
-        if(/^Cjs:/i.test(p)) cajas = parseInt(p.replace(/[^0-9]/g,''), 10) || 0;
-        else if(/^VH:/i.test(p)) ventanaHoraria = p.replace(/^VH:/i,'').trim();
-        else if(/^Tel:/i.test(p)) telefono = p.replace(/^Tel:/i,'').replace(/[^0-9]/g,'');
-      });
-    }else{
-      clientName = rawName || 'Parada sin nombre';
-    }
-
-    stops.push({
-      id:newKmlId(), clientName, address, cajas, ventanaHoraria, telefono,
-      lat, lng, styleColor, sourceFile:fileName
-    });
-  });
-
-  if(stops.length===0) throw new Error('SIN_COORDENADAS');
-  return stops;
-}
-
-function handleKmlFiles(fileList){
-  const files = Array.from(fileList);
-  if(files.length===0) return;
-  let added = 0, failed = 0;
-  let pending = files.length;
-
-  files.forEach(file=>{
-    const reader = new FileReader();
-    reader.onload = e=>{
-      try{
-        const stops = parseKmlFile(e.target.result, file.name);
-        kmlStops = kmlStops.concat(stops);
-        added += stops.length;
-      }catch(err){
-        console.error('Error parseando KML', file.name, err);
-        failed++;
-      }
-      pending--;
-      if(pending===0){
-        saveKmlToStorage();
-        renderKmlFileInfo();
-        safeRender(renderRoutesMap);
-        let msg = added+' parada(s) agregada(s) desde KML';
-        if(failed>0) msg += ', '+failed+' archivo(s) con error';
-        showToast(msg);
-      }
-    };
-    reader.onerror = ()=>{ failed++; pending--; };
-    reader.readAsText(file);
-  });
-}
-
-function renderKmlFileInfo(){
-  const info = document.getElementById('kmlFileInfo');
-  const text = document.getElementById('kmlFileInfoText');
-  if(!info || !text) return;
-  if(kmlStops.length===0){ info.style.display='none'; return; }
-  info.style.display='block';
-  const sourceCount = new Set(kmlStops.map(s=>s.sourceFile)).size;
-  text.textContent = `${kmlStops.length} parada(s) cargada(s) de ${sourceCount} archivo(s)`;
 }
 
 /* =========================================================
@@ -1676,6 +1551,28 @@ function loadTesseract(){
     'https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js'
   ], false);
   return tesseractLoadPromise;
+}
+
+/* Tesseract necesita crear un Worker interno. El modo por defecto (workerBlobURL:true) es el
+   que funciona en la gran mayoría de entornos (archivo local, servidor propio, etc.). Dentro
+   de la vista previa de Claude (claudeusercontent.com), ese modo puede fallar por su política
+   de seguridad; en ese caso funciona el modo alternativo (workerBlobURL:false). Se detecta solo
+   una vez, probando el modo estándar primero y cayendo al alternativo solo si hace falta. */
+let agendaOcrWorkerMode = null; // null=sin detectar; true/false=modo que funcionó
+async function recognizeAgendaStrip(strip){
+  if(agendaOcrWorkerMode === null){
+    try{
+      const r = await Tesseract.recognize(strip, 'spa', { workerBlobURL: true });
+      agendaOcrWorkerMode = true;
+      return r;
+    }catch(err){
+      console.warn('OCR: modo estándar de Worker falló, probando modo alternativo', err);
+      const r = await Tesseract.recognize(strip, 'spa', { workerBlobURL: false });
+      agendaOcrWorkerMode = false;
+      return r;
+    }
+  }
+  return Tesseract.recognize(strip, 'spa', { workerBlobURL: agendaOcrWorkerMode });
 }
 
 /* De una línea de texto reconocida por Tesseract (ya agrupada y ordenada de izquierda a
@@ -1756,69 +1653,85 @@ function handleAgendaImage(file){
       return;
     }
 
+    // Se usa FileReader (data:) en vez de URL.createObjectURL (blob:) porque el entorno de
+    // vista previa de Claude también bloquea/reescribe las URLs blob: al cargarlas en un
+    // <img>, igual que hacía con el Worker de OCR — data: no depende de ese esquema.
     const img = new Image();
-    const objUrl = URL.createObjectURL(file);
-    img.onload = async ()=>{
-      try{
-        statusEl.textContent = 'Preparando la imagen...';
-        const strips = splitImageIntoStrips(img, 140, 0.25);
-        URL.revokeObjectURL(objUrl);
+    const reader = new FileReader();
+    reader.onload = (readerEvt)=>{
+      img.onload = async ()=>{
+        try{
+          statusEl.textContent = 'Preparando la imagen...';
+          const strips = splitImageIntoStrips(img, 140, 0.25);
 
-        let allLines = [];
-        for(let i=0; i<strips.length; i++){
-          statusEl.textContent = `Analizando la imagen... (parte ${i+1} de ${strips.length})`;
-          // eslint-disable-next-line no-await-in-loop
-          // workerBlobURL:false evita crear el worker a través de un Blob interno
-          // (bloqueado por política de seguridad al usar la app dentro del entorno
-          // de vista previa de Claude); en su lugar carga el script del worker directo.
-          const result = await Tesseract.recognize(strips[i], 'spa', { workerBlobURL: false });
-          const lines = (result.data.lines||[]).filter(l=>l.words && l.words.length>0);
-          allLines = allLines.concat(lines);
+          agendaOcrWorkerMode = null; // redetectar en cada imagen, por si cambia el entorno
+          let allLines = [];
+          for(let i=0; i<strips.length; i++){
+            statusEl.textContent = `Analizando la imagen... (parte ${i+1} de ${strips.length})`;
+            // eslint-disable-next-line no-await-in-loop
+            const result = await recognizeAgendaStrip(strips[i]);
+            const lines = (result.data.lines||[]).filter(l=>l.words && l.words.length>0);
+            allLines = allLines.concat(lines);
+          }
+
+          if(allLines.length===0){
+            statusEl.textContent = 'No se reconoció texto en la imagen. Prueba con una foto más nítida o agrega los contactos manualmente.';
+            return;
+          }
+
+          let parsed = allLines
+            .map(l=>parseWordsToContact(l.words))
+            // Se exige ruta o teléfono (no solo nombre): descarta el ruido de texto que a veces
+            // aparece en los bordes de una franja, sin dato "duro" que lo respalde.
+            .filter(c => c.ruta || c.telefono)
+            .filter(c => !AGENDA_HEADER_WORDS.some(h => c.nombre.toUpperCase().includes(h)));
+
+          parsed = dedupeAgendaContacts(parsed);
+
+          let added = 0;
+          parsed.forEach(c=>{
+            agendaContacts.push({id:newAgendaId(), ruta:c.ruta, telefono:c.telefono, nombre:c.nombre});
+            added++;
+          });
+          saveAgendaToStorage();
+          renderAgenda();
+          statusEl.textContent = added>0
+            ? `Listo: se extrajeron ${added} contacto(s). Revisa y corrige lo que haga falta directamente en la tabla.`
+            : 'No se identificaron filas de contacto reconocibles. Prueba con una foto más nítida o agrega los contactos manualmente.';
+        }catch(err){
+          console.error('Error en OCR', err);
+          const msg = String((err && err.message) || err);
+          if(msg.includes('SecurityError') || msg.includes('Worker') || msg.includes('blob')){
+            statusEl.innerHTML = '⚠️ El reconocimiento automático no puede funcionar aquí, dentro de la vista previa de Claude (bloquea por seguridad la función que usa el OCR). <b>Descarga este archivo y ábrelo directamente en tu navegador</b> (doble clic sobre el archivo descargado) — ahí sí funciona sin problema. Mientras tanto puedes agregar los contactos a mano con "+ Agregar contacto".';
+          }else{
+            statusEl.textContent = 'No se pudo procesar la imagen. Intenta con una foto más nítida o agrega los contactos manualmente.';
+          }
         }
-
-        if(allLines.length===0){
-          statusEl.textContent = 'No se reconoció texto en la imagen. Prueba con una foto más nítida o agrega los contactos manualmente.';
-          return;
-        }
-
-        let parsed = allLines
-          .map(l=>parseWordsToContact(l.words))
-          // Se exige ruta o teléfono (no solo nombre): descarta el ruido de texto que a veces
-          // aparece en los bordes de una franja, sin dato "duro" que lo respalde.
-          .filter(c => c.ruta || c.telefono)
-          .filter(c => !AGENDA_HEADER_WORDS.some(h => c.nombre.toUpperCase().includes(h)));
-
-        parsed = dedupeAgendaContacts(parsed);
-
-        let added = 0;
-        parsed.forEach(c=>{
-          agendaContacts.push({id:newAgendaId(), ruta:c.ruta, telefono:c.telefono, nombre:c.nombre});
-          added++;
-        });
-        saveAgendaToStorage();
-        renderAgenda();
-        statusEl.textContent = added>0
-          ? `Listo: se extrajeron ${added} contacto(s). Revisa y corrige lo que haga falta directamente en la tabla.`
-          : 'No se identificaron filas de contacto reconocibles. Prueba con una foto más nítida o agrega los contactos manualmente.';
-      }catch(err){
-        console.error('Error en OCR', err);
-        const msg = String((err && err.message) || err);
-        if(msg.includes('SecurityError') || msg.includes('Worker') || msg.includes('blob')){
-          statusEl.textContent = 'No se pudo iniciar el motor de OCR en este entorno de vista previa. Descarga el archivo y ábrelo directamente en tu navegador (doble clic), o agrega los contactos manualmente.';
-        }else{
-          statusEl.textContent = 'No se pudo procesar la imagen. Intenta con una foto más nítida o agrega los contactos manualmente.';
-        }
-      }
+      };
+      img.onerror = ()=>{
+        statusEl.textContent = 'No se pudo cargar la imagen seleccionada. Verifica que el archivo sea una imagen válida (JPG o PNG).';
+      };
+      img.src = readerEvt.target.result;
     };
-    img.onerror = ()=>{
-      URL.revokeObjectURL(objUrl);
-      statusEl.textContent = 'No se pudo cargar la imagen seleccionada.';
+    reader.onerror = ()=>{
+      statusEl.textContent = 'No se pudo leer el archivo seleccionado.';
     };
-    img.src = objUrl;
+    reader.readAsDataURL(file);
   });
 }
 
+/* La vista previa de artefactos de Claude (claudeusercontent.com) bloquea por seguridad la
+   creación de Workers, que el OCR necesita — no hay forma de evitarlo desde el código de la
+   página. Se avisa apenas se entra a Agenda, en vez de esperar a que falle un intento. */
+function isClaudeArtifactPreview(){
+  try{ return /claudeusercontent\.com$/i.test(window.location.hostname); }
+  catch(e){ return false; }
+}
+
 function renderAgenda(){
+  const warning = document.getElementById('agendaPreviewWarning');
+  if(warning) warning.style.display = isClaudeArtifactPreview() ? 'block' : 'none';
+
   const tbody = document.getElementById('agendaTbody');
   const empty = document.getElementById('agendaEmpty');
   if(!tbody || !empty) return;
@@ -2047,7 +1960,6 @@ let mapColorMode = 'status'; // 'status' | 'route'
 const mapRouteFilterState = new Set(); // vacío = todas las rutas; si no, uno o más routeLabel
 const mapSalaFilterState = new Set();  // vacío = todas las salas; si no, una o más salas
 let currentMapPoints = []; // puntos realmente dibujados en el último render (con su marcador Leaflet)
-let currentKmlPoints = []; // paradas KML realmente dibujadas en el último render
 
 /* Buscador de clientes sobre el mapa: filtra currentMapPoints por código o nombre y, al elegir
    un resultado, centra el mapa en ese cliente y abre su popup. */
@@ -2065,33 +1977,19 @@ function renderMapClientResults(query){
   const matches = currentMapPoints.filter(p =>
     (p.clientName||'').toLowerCase().includes(q) || String(p.clientCode||'').includes(q)
   );
-  const kmlMatches = currentKmlPoints.filter(s =>
-    (s.clientName||'').toLowerCase().includes(q) || (s.address||'').toLowerCase().includes(q)
-  );
-  const allMatches = matches.concat(kmlMatches);
 
-  if(allMatches.length===0){
-    panel.innerHTML = '<div class="map-client-empty">Ningún cliente ni parada visible en el mapa coincide con la búsqueda.</div>';
+  if(matches.length===0){
+    panel.innerHTML = '<div class="map-client-empty">Ningún cliente visible en el mapa coincide con la búsqueda.</div>';
     panel.classList.add('open');
     return;
   }
 
-  const shown = allMatches.slice(0, 40);
-  panel.innerHTML = shown.map((p,i)=>{
-    const isKml = !!p.styleColor;
-    if(isKml){
-      return `
-      <div class="map-client-result" data-idx="${i}">
-        <div class="mc-name"><span class="mc-status" style="background:#e0a527;"></span>${esc(p.clientName||'(sin nombre)')} <span style="color:var(--text-dim);font-weight:400;">· KML</span></div>
-        <div class="mc-meta"><span>${esc(p.address||'-')}</span></div>
-      </div>`;
-    }
-    return `
+  const shown = matches.slice(0, 40);
+  panel.innerHTML = shown.map((p,i)=>`
       <div class="map-client-result" data-idx="${i}">
         <div class="mc-name"><span class="mc-status" style="background:${statusColorFor(p.status)}"></span>${esc(p.clientName||'(sin nombre)')}</div>
         <div class="mc-meta"><span>Código: ${esc(p.clientCode||'-')}</span><span>Ruta: ${esc(p.routeLabel)}</span><span>${esc(translateSegStatus(p.status))}</span></div>
-      </div>`;
-  }).join('') + (allMatches.length>shown.length ? `<div class="map-client-more">y ${allMatches.length-shown.length} más… afina la búsqueda</div>` : '');
+      </div>`).join('') + (matches.length>shown.length ? `<div class="map-client-more">y ${matches.length-shown.length} más… afina la búsqueda</div>` : '');
   panel.classList.add('open');
 
   panel.querySelectorAll('.map-client-result').forEach(el=>{
@@ -2127,11 +2025,10 @@ function renderRoutesMap(){
   statusLegend.innerHTML = '';
   routeLegend.innerHTML = '';
   currentMapPoints = [];
-  currentKmlPoints = [];
   closeMapClientResults();
 
-  if(routes.length===0 && !salesReport && kmlStops.length===0){
-    container.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">Carga al menos una ruta, un reporte de ventas o un KML de paradas (en "Importar") para ver el mapa consolidado.</div>';
+  if(routes.length===0 && !salesReport){
+    container.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">Carga al menos una ruta o un reporte de ventas (en "Importar") para ver el mapa consolidado.</div>';
     if(statusWrap) statusWrap.style.display='none';
     if(routeWrap) routeWrap.style.display='none';
     buildMultiSelect(mapRouteFilterState, 'mapRouteFilterBtn', 'mapRouteFilterPanel', [], 'Todas las rutas', false, '', ()=>safeRender(renderRoutesMap));
@@ -2173,17 +2070,7 @@ function renderRoutesMap(){
     ? points.filter(p=>mapSalaFilterState.has(p.sala))
     : points;
 
-  // Toggle de paradas KML: solo se ofrece si hay alguna cargada
-  const kmlToggleWrap = document.getElementById('kmlToggleWrap');
-  const kmlToggleCount = document.getElementById('kmlToggleCount');
-  const kmlToggleInput = document.getElementById('showKmlStopsToggle');
-  if(kmlToggleWrap){
-    kmlToggleWrap.style.display = kmlStops.length>0 ? 'flex' : 'none';
-  }
-  if(kmlToggleCount) kmlToggleCount.textContent = kmlStops.length;
-  const kmlPoints = (kmlStops.length>0 && kmlToggleInput && kmlToggleInput.checked) ? kmlStops : [];
-
-  if(points.length===0 && kmlPoints.length===0){
+  if(points.length===0){
     container.innerHTML = (mapRouteFilterState.size>0 || mapSalaFilterState.size>0)
       ? '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">No hay clientes con coordenadas disponibles para el filtro elegido.</div>'
       : (salesReport
@@ -2194,12 +2081,11 @@ function renderRoutesMap(){
     return;
   }
 
-  if(statusWrap) statusWrap.style.display = (mapColorMode==='status' && points.length>0) ? 'block' : 'none';
-  if(routeWrap) routeWrap.style.display = (mapColorMode==='route' && points.length>0) ? 'block' : 'none';
+  if(statusWrap) statusWrap.style.display = mapColorMode==='status' ? 'block' : 'none';
+  if(routeWrap) routeWrap.style.display = mapColorMode==='route' ? 'block' : 'none';
 
-  const centerSource = points.length>0 ? points : kmlPoints;
-  const avgLat = centerSource.reduce((s,p)=>s+p.lat,0)/centerSource.length;
-  const avgLng = centerSource.reduce((s,p)=>s+p.lng,0)/centerSource.length;
+  const avgLat = points.reduce((s,p)=>s+p.lat,0)/points.length;
+  const avgLng = points.reduce((s,p)=>s+p.lng,0)/points.length;
   allRoutesMap = L.map(container, {scrollWheelZoom:true}).setView([avgLat, avgLng], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution:'&copy; OpenStreetMap contributors', maxZoom:19
@@ -2221,27 +2107,9 @@ function renderRoutesMap(){
     bounds.push([p.lat, p.lng]);
   });
 
-  // Paradas KML: ícono distinto (pin), con la info propia del archivo (dirección, cajas, etc.)
-  kmlPoints.forEach(s=>{
-    const icon = L.divIcon({
-      html: `<div style="font-size:22px;line-height:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));">📍</div>`,
-      className: 'kml-stop-icon', iconSize:[22,22], iconAnchor:[11,20]
-    });
-    const marker = L.marker([s.lat, s.lng], {icon}).addTo(allRoutesMap);
-    const infoLines = [`<b>${esc(s.clientName)}</b>`];
-    if(s.address) infoLines.push(esc(s.address));
-    if(s.cajas!==null && s.cajas!==undefined) infoLines.push(`Cajas: ${esc(s.cajas)}`);
-    if(s.ventanaHoraria) infoLines.push(`Ventana horaria: ${esc(s.ventanaHoraria)}`);
-    if(s.telefono) infoLines.push(`Tel: ${esc(s.telefono)}`);
-    marker.bindPopup(infoLines.join('<br>'));
-    s.marker = marker;
-    bounds.push([s.lat, s.lng]);
-  });
-
   if(bounds.length>1) allRoutesMap.fitBounds(bounds, {padding:[30,30]});
   else if(bounds.length===1) allRoutesMap.setView(bounds[0], 15);
   currentMapPoints = points;
-  currentKmlPoints = kmlPoints;
 
   // Leyenda de estado: solo los estados que realmente aparecen entre los puntos
   const statusOrder = ['ATENDIDO','PENDIENTE','RECHAZADO','EN_PROGRESO'];
@@ -2822,8 +2690,6 @@ function safeRender(fn){
 
 let routeDetailSort = { column: null, direction: 'asc' };
 
-let miniMapInstances = {};
-
 function buildRouteDetailRows(){
   // Si hay reporte de ventas, se listan TODAS sus rutas (aunque todavía no hayas cargado el
   // JSON de esa ruta) — "Atendidos/Pendientes" se completan solos en cuanto cargues el JSON
@@ -2859,14 +2725,81 @@ function buildRouteDetailRows(){
   });
 }
 
+/* Filtra el mapa consolidado (arriba, en esta misma vista) a solo la ruta indicada y
+   hace scroll hasta él — usado tanto al hacer clic en la fila como en el botón "Mapa". */
+function focusRouteOnMap(ruta){
+  mapRouteFilterState.clear();
+  mapRouteFilterState.add(ruta);
+  safeRender(renderRoutesMap);
+  const mapEl = document.getElementById('allRoutesMap');
+  if(mapEl) mapEl.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+/* Genera y descarga un .kml con las paradas de una ruta, en el mismo formato que usan las
+   apps de ruteo tipo MAPS.ME: un Placemark por cliente con "|Nombre|Dirección|Cjs:N" y un
+   ícono rojo (pendiente) o azul (atendido). */
+function downloadRouteKml(ruta, transporte){
+  const points = buildMapPoints().filter(p=>p.routeLabel===ruta);
+  const withCoords = points.filter(p=>typeof p.lat==='number' && typeof p.lng==='number');
+
+  if(withCoords.length===0){
+    showToast('Esta ruta no tiene clientes con coordenadas disponibles para generar el mapa.');
+    return;
+  }
+
+  const placemarks = withCoords.map(p=>{
+    const nameParts = ['', p.clientName||''];
+    if(p.address) nameParts.push(p.address);
+    if(p.cajas) nameParts.push('Cjs:'+Math.round(p.cajas));
+    const name = nameParts.join('|');
+    const style = p.status==='ATENDIDO' ? 'placemark-blue' : 'placemark-red';
+    return `\t\t<Placemark>\n\t\t\t<n>${esc(name)}</n>\n\t\t\t<styleUrl>#${style}</styleUrl>\n\t\t\t<Point>\n\t\t\t\t<coordinates>${p.lng},${p.lat}</coordinates>\n\t\t\t</Point>\n\t\t</Placemark>`;
+  }).join('\n');
+
+  const docName = 'Ruta_'+ruta+(transporte && transporte!=='-' ? '_'+transporte : '');
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://earth.google.com/kml/2.2">
+\t<Document>
+\t\t<Style id="placemark-blue">
+\t\t\t<IconStyle>
+\t\t\t\t<Icon>
+\t\t\t\t\t<href>http://mapswith.me/placemarks/placemark-blue.png</href>
+\t\t\t\t</Icon>
+\t\t\t</IconStyle>
+\t\t</Style>
+\t\t<Style id="placemark-red">
+\t\t\t<IconStyle>
+\t\t\t\t<Icon>
+\t\t\t\t\t<href>http://mapswith.me/placemarks/placemark-red.png</href>
+\t\t\t\t</Icon>
+\t\t\t</IconStyle>
+\t\t</Style>
+\t\t<n>${esc(docName)}</n>
+\t\t<visibility>1</visibility>
+${placemarks}
+\t</Document>
+</kml>
+`;
+
+  const fileName = docName+'.kml';
+  try{
+    const blob = new Blob([kml], {type:'application/vnd.google-earth.kml+xml'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Mapa descargado: '+fileName);
+  }catch(e){
+    console.error('Error generando KML', e);
+    showToast('No se pudo generar el archivo. Intenta de nuevo.');
+  }
+}
+
 function renderRouteDetailTable(){
   const tbody = document.getElementById('routeDetailTbody');
   const empty = document.getElementById('routeDetailTableEmpty');
   if(!tbody || !empty) return;
-
-  // Limpiar los mini-mapas de la tabla anterior antes de reconstruirla
-  Object.values(miniMapInstances).forEach(m=>{ try{ m.remove(); }catch(e){} });
-  miniMapInstances = {};
   tbody.innerHTML = '';
 
   if(routes.length===0 && !salesReport){
@@ -2896,10 +2829,7 @@ function renderRouteDetailTable(){
     });
   }
 
-  const allMapPoints = buildMapPoints();
-
-  rows.forEach(({routeId, ruta, transporte, cajas, programados, atendidos, pendientes}, idx)=>{
-    const miniMapId = 'mini-map-'+idx;
+  rows.forEach(({routeId, ruta, transporte, cajas, programados, atendidos, pendientes})=>{
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
     tr.title = 'Ver esta ruta en el mapa de arriba';
@@ -2910,17 +2840,15 @@ function renderRouteDetailTable(){
       <td class="num">${programados}</td>
       <td class="num" style="color:var(--green);">${atendidos}</td>
       <td class="num" style="color:var(--red);">${pendientes}</td>
-      <td class="mini-map-cell"><div class="mini-map" id="${miniMapId}"></div></td>
+      <td class="num"><button type="button" class="route-map-btn" title="Descargar mapa .kml de esta ruta">🗺️ Mapa</button></td>
       <td class="num">${routeId ? `<span class="chofer-del" data-id="${esc(routeId)}" title="Eliminar esta ruta">🗑</span>` : ''}</td>`;
     tr.addEventListener('click', (ev)=>{
-      if(ev.target.closest('.chofer-del') || ev.target.closest('.mini-map-cell')) return;
-      // Filtra el mapa consolidado (más arriba, en esta misma vista) a solo esta ruta —
-      // ya no navega a otra pestaña.
-      mapRouteFilterState.clear();
-      mapRouteFilterState.add(ruta);
-      safeRender(renderRoutesMap);
-      const mapEl = document.getElementById('allRoutesMap');
-      if(mapEl) mapEl.scrollIntoView({behavior:'smooth', block:'center'});
+      if(ev.target.closest('.chofer-del')) return;
+      focusRouteOnMap(ruta);
+    });
+    tr.querySelector('.route-map-btn').addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      downloadRouteKml(ruta, transporte);
     });
     tbody.appendChild(tr);
   });
@@ -2939,45 +2867,7 @@ function renderRouteDetailTable(){
     });
   });
 
-  // Mini-mapa por fila, con los clientes de esa ruta (mismos puntos que el mapa consolidado)
-  rows.forEach(({ruta}, idx)=>{
-    safeRender(()=> renderMiniRouteMap('mini-map-'+idx, allMapPoints.filter(p=>p.routeLabel===ruta)));
-  });
-
   updateRouteDetailSortArrows();
-}
-
-function renderMiniRouteMap(containerId, points){
-  const container = document.getElementById(containerId);
-  if(!container) return;
-  if(miniMapInstances[containerId]){ try{ miniMapInstances[containerId].remove(); }catch(e){} delete miniMapInstances[containerId]; }
-  container.innerHTML = '';
-
-  if(typeof L === 'undefined'){
-    container.innerHTML = '<div class="mini-map-empty">Mapa no disponible</div>';
-    return;
-  }
-  if(!points || points.length===0){
-    container.innerHTML = '<div class="mini-map-empty">Sin coordenadas</div>';
-    return;
-  }
-
-  const map = L.map(container, {
-    zoomControl:false, attributionControl:false, dragging:false,
-    scrollWheelZoom:false, doubleClickZoom:false, boxZoom:false,
-    keyboard:false, touchZoom:false, tap:false
-  });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(map);
-
-  const bounds = [];
-  points.forEach(p=>{
-    L.marker([p.lat, p.lng], {icon: pinDivIcon(statusColorFor(p.status), 13)}).addTo(map);
-    bounds.push([p.lat, p.lng]);
-  });
-  if(bounds.length===1){ map.setView(bounds[0], 14); }
-  else{ map.fitBounds(bounds, {padding:[8,8]}); }
-
-  miniMapInstances[containerId] = map;
 }
 
 function updateRouteDetailSortArrows(){
@@ -3340,33 +3230,6 @@ document.getElementById('maestroFileRemove').addEventListener('click', ()=>{
   });
 });
 
-const kmlUploadZone = document.getElementById('kmlUploadZone');
-const kmlFileInput = document.getElementById('kmlFileInput');
-kmlUploadZone.addEventListener('click', ()=>kmlFileInput.click());
-kmlFileInput.addEventListener('change', e=>{
-  if(e.target.files && e.target.files.length) handleKmlFiles(e.target.files);
-  kmlFileInput.value='';
-});
-kmlUploadZone.addEventListener('dragover', e=>{ e.preventDefault(); kmlUploadZone.classList.add('dragover'); });
-kmlUploadZone.addEventListener('dragleave', ()=> kmlUploadZone.classList.remove('dragover'));
-kmlUploadZone.addEventListener('drop', e=>{
-  e.preventDefault();
-  kmlUploadZone.classList.remove('dragover');
-  if(e.dataTransfer.files && e.dataTransfer.files.length) handleKmlFiles(e.dataTransfer.files);
-});
-document.getElementById('kmlFileRemove').addEventListener('click', ()=>{
-  showConfirm('¿Quitar todas las paradas KML cargadas?', ()=>{
-    kmlStops = [];
-    saveKmlToStorage();
-    renderKmlFileInfo();
-    safeRender(renderRoutesMap);
-    showToast('Paradas KML quitadas.');
-  });
-});
-document.getElementById('showKmlStopsToggle').addEventListener('change', ()=>{
-  safeRender(renderRoutesMap);
-});
-
 const agendaUploadZone = document.getElementById('agendaUploadZone');
 const agendaFileInput = document.getElementById('agendaFileInput');
 agendaUploadZone.addEventListener('click', ()=>agendaFileInput.click());
@@ -3387,6 +3250,26 @@ document.getElementById('agendaAddBtn').addEventListener('click', ()=>{
   renderAgenda();
 });
 document.getElementById('agendaSearch').addEventListener('input', renderAgenda);
+
+// Pegar una imagen directamente (Ctrl+V) mientras se está en la pestaña Agenda: la procesa
+// igual que si se hubiera cargado por el selector de archivos. No interfiere con pegar texto
+// normal (por ejemplo al editar una celda de la tabla), solo actúa si el portapapeles trae una imagen.
+document.addEventListener('paste', (e)=>{
+  const agendaView = document.getElementById('view-agenda');
+  if(!agendaView || !agendaView.classList.contains('active')) return;
+  const items = (e.clipboardData || window.clipboardData) ? (e.clipboardData || window.clipboardData).items : null;
+  if(!items) return;
+  for(const item of items){
+    if(item.type && item.type.indexOf('image/')===0){
+      const file = item.getAsFile();
+      if(file){
+        e.preventDefault();
+        handleAgendaImage(file);
+      }
+      break;
+    }
+  }
+});
 
 document.getElementById('segSearch').addEventListener('input', filterAndRenderSeguimiento);
 document.getElementById('exportSeguimientoExcelBtn').addEventListener('click', exportSeguimientoExcel);
@@ -3617,7 +3500,6 @@ loadFromStorage();
 loadSalesFromStorage();
 loadChecklistFromStorage();
 loadMaestroFromStorage();
-loadKmlFromStorage();
 loadAgendaFromStorage();
 updateStorageInfo();
 renderAll();
