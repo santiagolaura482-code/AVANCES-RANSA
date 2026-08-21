@@ -68,6 +68,14 @@
   ::-webkit-scrollbar-thumb{background:#33373f;border-radius:4px;}
   ::-webkit-scrollbar-track{background:transparent;}
 
+  /* Oculto visualmente pero interactivo — algunos navegadores móviles ignoran los clics
+     sintéticos (input.click()) sobre elementos con display:none, así que los inputs de
+     archivo se ocultan así en vez de con display:none. */
+  .vis-hidden-file{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+  }
+
   /* ---------- Sidebar ---------- */
   #sidebar{
     width:300px;
@@ -295,7 +303,12 @@
     align-items:center;
     gap:4px;
     height:56px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
   }
+  #topbar::-webkit-scrollbar{display:none;}
   .tab-btn{
     background:none;
     border:none;
@@ -305,12 +318,27 @@
     cursor:pointer;
     border-bottom:2px solid transparent;
     font-weight:500;
+    white-space:nowrap;
+    flex-shrink:0;
   }
   .tab-btn:hover{color:var(--text);}
   .tab-btn.active{color:var(--amber);border-bottom-color:var(--amber);}
 
   .view{display:none;padding:26px 28px 60px 28px;}
   .view.active{display:block;}
+
+  @media(max-width:640px){
+    #topbar{padding:0 12px;height:50px;}
+    .tab-btn{padding:8px 12px;font-size:12.5px;}
+    .view{padding:16px 12px 40px 12px;}
+    h2.view-title{font-size:17px;}
+    .panel{padding:14px 14px;}
+    #allRoutesMap{height:320px;}
+    .filter-row{gap:8px;}
+    .filter-row input[type="text"]{width:100%;}
+    .msel-btn, #mapColorModeSelect{font-size:11.5px;padding:7px 10px;}
+    .msel-panel{left:auto;right:0;min-width:200px;max-width:calc(100vw - 40px);}
+  }
 
   h2.view-title{
     font-size:19px;
@@ -371,6 +399,8 @@
   }
 
   table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .table-scroll table{min-width:560px;}
   th{
     text-align:left;
     color:var(--text-dim);
@@ -409,12 +439,15 @@
   .status-pill.EN_PROGRESO{background:rgba(209,168,63,.15);color:var(--yellow);}
 
   #routeMap{height:360px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);}
-  #allRoutesMap{height:380px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);margin-bottom:16px;}
+  #allRoutesMap{height:440px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);margin-bottom:16px;}
 
-  .map-detail-row{display:grid;grid-template-columns:1.15fr 1.35fr;gap:18px;align-items:start;margin-bottom:20px;}
+  .map-detail-row{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start;margin-bottom:20px;}
+  .map-detail-row > *{min-width:0;}
   @media(max-width:1050px){.map-detail-row{grid-template-columns:1fr;}}
   .route-detail-table-wrap{max-height:400px;overflow-y:auto;overflow-x:auto;}
-  .route-detail-table-wrap table{min-width:600px;}
+  .route-detail-table-wrap table.route-detail-table{min-width:0;width:100%;table-layout:auto;}
+  .route-detail-table th, .route-detail-table td{text-align:center;padding:6px 5px;font-size:11.5px;}
+  .route-detail-table th.num, .route-detail-table td.num{text-align:center;}
   .route-detail-table-empty{padding:40px 10px;text-align:center;color:var(--text-dim);font-size:12.5px;}
 
   .route-map-btn{
@@ -430,6 +463,43 @@
   }
   .route-map-btn:hover{background:rgba(63,174,102,.24);}
   .map-pin-icon{background:transparent;border:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));}
+
+  .map-fs-btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:6px 14px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    background:var(--panel2);
+    color:var(--text);
+    font-size:12px;font-weight:600;
+    cursor:pointer;white-space:nowrap;
+    transition:.12s;
+  }
+  .map-fs-btn:hover{border-color:var(--amber);color:var(--amber);}
+  #mapCollapseBtn{border-color:var(--red);color:var(--red);}
+  #mapCollapseBtn:hover{background:rgba(209,91,91,.15);}
+
+  body.map-fullscreen-active{overflow:hidden;}
+  #mapPanel.map-panel-fullscreen{
+    position:fixed;
+    top:16px; left:16px; right:16px; bottom:16px;
+    z-index:500;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);
+    overflow-y:auto;
+  }
+  #mapPanel.map-panel-fullscreen #allRoutesMap{
+    flex:1 1 auto;
+    height:auto;
+    min-height:260px;
+  }
+  #mapPanel.map-panel-fullscreen .map-legends{flex-shrink:0;}
+  .map-fullscreen-backdrop{
+    display:none;
+    position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:499;
+  }
+  .map-fullscreen-backdrop.active{display:block;}
 
   .agenda-preview-warning{
     background:rgba(224,165,39,.1);
@@ -641,6 +711,7 @@
     box-shadow:0 6px 18px rgba(0,0,0,.4);
     opacity:0;pointer-events:none;transition:.25s;
     z-index:100;
+    max-width:calc(100vw - 32px);
   }
   #toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
 
@@ -667,7 +738,7 @@
 </head>
 <body>
 
-<input type="file" id="fileInput" accept=".json" multiple style="display:none;">
+<input type="file" id="fileInput" accept=".json" multiple class="vis-hidden-file">
 
 <div id="main">
   <div id="topbar">
@@ -724,7 +795,7 @@
     </div>
 
     <div class="map-detail-row">
-      <div class="panel" style="margin-bottom:0;">
+      <div class="panel" id="mapPanel" style="margin-bottom:0;">
         <div class="filter-row" style="margin-bottom:12px;">
           <h3 style="margin:0;">Mapa consolidado de rutas</h3>
           <div class="msel" id="mapSalaMsel" style="margin-left:auto;">
@@ -739,6 +810,8 @@
             <option value="status">Leyenda: Status</option>
             <option value="route">Leyenda: Por Ruta</option>
           </select>
+          <button type="button" id="mapExpandBtn" class="map-fs-btn" title="Ver el mapa en pantalla completa">⛶ Pantalla completa</button>
+          <button type="button" id="mapCollapseBtn" class="map-fs-btn" title="Volver al tamaño normal" style="display:none;">✕ Restaurar</button>
         </div>
         <div class="map-client-search" id="mapClientSearchWrap">
           <input type="text" id="mapClientSearch" placeholder="Buscar cliente por código o nombre...">
@@ -760,14 +833,14 @@
       <div class="panel" style="margin-bottom:0;">
         <h3>Detalle por ruta</h3>
         <div class="route-detail-table-wrap">
-          <table>
+          <table class="route-detail-table">
             <thead><tr>
               <th class="sortable" data-sort="ruta">Ruta<span class="sort-arrow"></span></th>
-              <th class="sortable" data-sort="transporte">Transporte<span class="sort-arrow"></span></th>
-              <th class="num sortable" data-sort="cajas">Cajas Prog.<span class="sort-arrow"></span></th>
-              <th class="num sortable" data-sort="programados">Programados<span class="sort-arrow"></span></th>
-              <th class="num sortable" data-sort="atendidos">Atendidos<span class="sort-arrow"></span></th>
-              <th class="num sortable" data-sort="pendientes">Pendientes<span class="sort-arrow"></span></th>
+              <th class="sortable" data-sort="transporte">Transp.<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="cajas">Cajas<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="programados">Prog.<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="atendidos">Atend.<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="pendientes">Pend.<span class="sort-arrow"></span></th>
               <th>Mapa</th>
               <th class="num"></th>
             </tr></thead>
@@ -831,12 +904,14 @@
             <option value="IN_PROGRESS">En progreso</option>
           </select>
         </div>
+        <div class="table-scroll">
         <table>
           <thead><tr>
             <th>#</th><th>Cliente</th><th>Código</th><th>Estado</th><th>Motivo</th><th class="num">Monto (S/)</th><th class="num">Items</th>
           </tr></thead>
           <tbody id="rdVisitsTbody"></tbody>
         </table>
+        </div>
       </div>
     </div>
   </div>
@@ -856,12 +931,14 @@
         <select id="categoryFilter"><option value="">Todas las categorías</option></select>
       </div>
       <div class="panel">
+        <div class="table-scroll">
         <table>
           <thead><tr>
             <th>Producto</th><th>Marca</th><th>Categoría</th><th class="num">Cantidad (cajas/und)</th><th class="num">Venta (S/)</th>
           </tr></thead>
           <tbody id="productsTbody"></tbody>
         </table>
+        </div>
       </div>
     </div>
   </div>
@@ -892,12 +969,14 @@
         </div>
       </div>
       <div class="panel">
+        <div class="table-scroll">
         <table>
           <thead><tr>
             <th>Cliente</th><th>Código</th><th class="num">Visitas</th><th class="num">Entregadas</th><th class="num">Rechazadas</th><th class="num">Pendientes</th><th class="num">Compra total (S/)</th>
           </tr></thead>
           <tbody id="clientsTbody"></tbody>
         </table>
+        </div>
       </div>
     </div>
   </div>
@@ -963,12 +1042,14 @@
           </div>
           <button id="exportSeguimientoExcelBtn" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;">⬇ Exportar Excel</button>
         </div>
+        <div class="table-scroll">
         <table>
           <thead><tr>
             <th>Cliente</th><th>Código Cliente</th><th>Transporte(s)</th><th>Código Ruta</th><th>Sala</th><th class="num">Líneas ped.</th><th class="num">Monto ref. (S/)</th><th>Estado</th>
           </tr></thead>
           <tbody id="segTbody"></tbody>
         </table>
+        </div>
       </div>
 
     </div>
@@ -986,7 +1067,7 @@
           <div class="icon">📊</div>
           <div class="txt"><b>Cargar Reporte de Ventas</b><br>Archivo .xlsx exportado (hoja "Sheet1")</div>
         </div>
-        <input type="file" id="salesFileInput" accept=".xlsx,.xls" style="display:none;">
+        <input type="file" id="salesFileInput" accept=".xlsx,.xls" class="vis-hidden-file">
         <div id="salesFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
           <span id="salesFileInfoText"></span>
           <span id="salesFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
@@ -999,7 +1080,7 @@
           <div class="icon">🗂️</div>
           <div class="txt"><b>Cargar Checklist</b><br>Archivo .xlsx con hoja "Checklist" (Transporte, Código, Sala)</div>
         </div>
-        <input type="file" id="checklistFileInput" accept=".xlsx,.xls" style="display:none;">
+        <input type="file" id="checklistFileInput" accept=".xlsx,.xls" class="vis-hidden-file">
         <div id="checklistFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
           <span id="checklistFileInfoText"></span>
           <span id="checklistFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
@@ -1012,7 +1093,7 @@
           <div class="icon">🧾</div>
           <div class="txt"><b>Cargar Maestro de Clientes</b><br>Archivo .xlsx (Cliente, Nombre 1, BZIRK, coordenadas...)</div>
         </div>
-        <input type="file" id="maestroFileInput" accept=".xlsx,.xls" style="display:none;">
+        <input type="file" id="maestroFileInput" accept=".xlsx,.xls" class="vis-hidden-file">
         <div id="maestroFileInfo" style="margin-top:8px;font-size:11.5px;color:var(--text-dim);display:none;">
           <span id="maestroFileInfoText"></span>
           <span id="maestroFileRemove" style="color:var(--red);cursor:pointer;margin-left:10px;">Quitar archivo</span>
@@ -1036,7 +1117,7 @@
         <div class="icon">📷</div>
         <div class="txt"><b>Cargar Imagen</b><br>Foto o captura de la lista de rutas / choferes (JPG, PNG) — o pega una imagen con Ctrl+V</div>
       </div>
-      <input type="file" id="agendaFileInput" accept="image/*" style="display:none;">
+      <input type="file" id="agendaFileInput" accept="image/*" class="vis-hidden-file">
       <div id="agendaOcrStatus" style="margin-top:10px;font-size:12px;color:var(--text-dim);display:none;"></div>
     </div>
 
@@ -1046,12 +1127,14 @@
         <button id="agendaAddBtn" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;">+ Agregar contacto</button>
         <button id="agendaClearBtn" style="background:var(--panel2);border:1px solid var(--red);color:var(--red);padding:7px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;">🗑 Limpiar agenda</button>
       </div>
+      <div class="table-scroll">
       <table>
         <thead><tr>
           <th>Ruta</th><th>Chofer</th><th>Teléfono</th><th class="num">Acciones</th>
         </tr></thead>
         <tbody id="agendaTbody"></tbody>
       </table>
+      </div>
       <div id="agendaEmpty" class="placeholder-big" style="display:none;">
         <div class="icon">📇</div>
         <h3>Sin contactos todavía</h3>
@@ -1063,6 +1146,7 @@
 </div>
 
 <div id="toast"></div>
+<div class="map-fullscreen-backdrop" id="mapFullscreenBackdrop"></div>
 
 <div id="confirmModal" class="confirm-modal-overlay" style="display:none;">
   <div class="confirm-modal">
@@ -3301,6 +3385,30 @@ document.getElementById('exportSeguimientoExcelBtn').addEventListener('click', e
 document.getElementById('mapColorModeSelect').addEventListener('change', (e)=>{
   mapColorMode = e.target.value;
   safeRender(renderRoutesMap);
+});
+
+/* Mapa consolidado en pantalla completa: agranda el panel del mapa (Leaflet necesita que se
+   le avise explícitamente con invalidateSize() tras el cambio de tamaño, ya que no detecta
+   solo los cambios de tamaño hechos por CSS). */
+function setMapFullscreen(expand){
+  const panel = document.getElementById('mapPanel');
+  const backdrop = document.getElementById('mapFullscreenBackdrop');
+  if(!panel) return;
+  panel.classList.toggle('map-panel-fullscreen', expand);
+  document.body.classList.toggle('map-fullscreen-active', expand);
+  if(backdrop) backdrop.classList.toggle('active', expand);
+  document.getElementById('mapExpandBtn').style.display = expand ? 'none' : 'inline-flex';
+  document.getElementById('mapCollapseBtn').style.display = expand ? 'inline-flex' : 'none';
+  // Se espera a que el navegador aplique el nuevo tamaño (CSS) antes de que Leaflet lo recalcule
+  setTimeout(()=>{ if(allRoutesMap){ try{ allRoutesMap.invalidateSize(); }catch(e){} } }, 60);
+}
+document.getElementById('mapExpandBtn').addEventListener('click', ()=>setMapFullscreen(true));
+document.getElementById('mapCollapseBtn').addEventListener('click', ()=>setMapFullscreen(false));
+document.getElementById('mapFullscreenBackdrop').addEventListener('click', ()=>setMapFullscreen(false));
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape' && document.getElementById('mapPanel').classList.contains('map-panel-fullscreen')){
+    setMapFullscreen(false);
+  }
 });
 
 document.getElementById('mapClientSearch').addEventListener('input', (e)=>{
