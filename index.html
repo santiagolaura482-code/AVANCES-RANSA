@@ -446,18 +446,18 @@
   @media(max-width:1050px){.map-detail-row{grid-template-columns:1fr;}}
   .route-detail-table-wrap{max-height:400px;overflow-y:auto;overflow-x:auto;}
   .route-detail-table-wrap table.route-detail-table{min-width:0;width:100%;table-layout:auto;}
-  .route-detail-table th, .route-detail-table td{text-align:center;padding:6px 5px;font-size:11.5px;}
+  .route-detail-table th, .route-detail-table td{text-align:center;padding:6px 3px;font-size:10.8px;}
   .route-detail-table th.num, .route-detail-table td.num{text-align:center;}
   .route-detail-table-empty{padding:40px 10px;text-align:center;color:var(--text-dim);font-size:12.5px;}
 
   .route-map-btn{
-    display:inline-flex;align-items:center;gap:6px;
-    padding:6px 14px;
+    display:inline-flex;align-items:center;gap:4px;
+    padding:5px 9px;
     border:1px solid var(--green);
     border-radius:8px;
     background:rgba(63,174,102,.12);
     color:var(--green);
-    font-size:12px;font-weight:600;
+    font-size:11px;font-weight:600;
     cursor:pointer;white-space:nowrap;
     transition:.12s;
   }
@@ -836,6 +836,8 @@
             <thead><tr>
               <th class="sortable" data-sort="ruta">Ruta<span class="sort-arrow"></span></th>
               <th class="sortable" data-sort="transporte">Transp.<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="capacidad">Cap.<span class="sort-arrow"></span></th>
+              <th class="sortable" data-sort="horas">Horas<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="cajas">Cajas<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="programados">Prog.<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="atendidos">Atend.<span class="sort-arrow"></span></th>
@@ -1373,9 +1375,50 @@ function parseChecklistWorkbook(arrayBuffer, fileName){
   }
   if(Object.keys(map).length===0) throw new Error('SIN_FILAS');
 
+  // Hoja "PCD" (opcional, del mismo archivo): Capacidad y Horas por transporte.
+  // Si no existe o no se puede leer, el checklist igual se carga sin estos datos.
+  const pcd = {};
+  if(wb.SheetNames.includes('PCD')){
+    try{
+      const wsPcd = wb.Sheets['PCD'];
+      const pcdRows = XLSX.utils.sheet_to_json(wsPcd, {header:1, raw:true, defval:''});
+      const pcdHeaderIdx = findHeaderRow(pcdRows, ['transporte']);
+      if(pcdHeaderIdx!==-1){
+        const pcdHeaders = pcdRows[pcdHeaderIdx];
+        const idxPcdTransporte = findHeaderIndex(pcdHeaders, h => h==='transporte');
+        const idxCapacidad = findHeaderIndex(pcdHeaders, h => h==='capacidad');
+        const idxHoras = findHeaderIndex(pcdHeaders, h => h==='horas');
+        for(let r=pcdHeaderIdx+1; r<pcdRows.length; r++){
+          const row = pcdRows[r];
+          if(!row || row.length===0) continue;
+          const rawT = row[idxPcdTransporte];
+          if(rawT===''||rawT===undefined||rawT===null) continue;
+          const tNum = parseInt(String(rawT).replace(/[^0-9]/g,''), 10);
+          if(isNaN(tNum)) continue;
+
+          let capacidad = idxCapacidad!==-1 ? parseFloat(row[idxCapacidad]) : NaN;
+          capacidad = isNaN(capacidad) ? null : capacidad;
+
+          let horas = idxHoras!==-1 ? row[idxHoras] : '';
+          if(typeof horas === 'number'){
+            // Por si Excel entrega la hora como fracción de día en vez de texto "HH:MM"
+            const totalMin = Math.round(horas*24*60);
+            horas = String(Math.floor(totalMin/60)).padStart(2,'0')+':'+String(totalMin%60).padStart(2,'0');
+          }else{
+            horas = String(horas||'').trim();
+          }
+          pcd[tNum] = {capacidad, horas};
+        }
+      }
+    }catch(e){
+      console.error('No se pudo leer la hoja PCD del checklist (opcional)', e);
+    }
+  }
+
   return {
     fileName, loadedAt:new Date().toISOString(),
-    map, salas:[...salasSet].sort(), codigos:[...codigosSet].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
+    map, salas:[...salasSet].sort(), codigos:[...codigosSet].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})),
+    pcd
   };
 }
 
@@ -2222,6 +2265,14 @@ function getChecklistInfoForTransporte(transportId){
   return checklist._normIndex[target] || null;
 }
 
+/* Capacidad y Horas de la hoja "PCD" del checklist, por transporte */
+function getPcdInfoForTransporte(transportId){
+  if(!checklist || !checklist.pcd || !transportId) return null;
+  const target = parseInt(String(transportId).replace(/[^0-9]/g,''), 10);
+  if(isNaN(target)) return null;
+  return checklist.pcd[target] || null;
+}
+
 function normalizeTransporteNum(t){
   const n = parseInt(String(t).replace(/[^0-9]/g,''), 10);
   return isNaN(n) ? null : n;
@@ -2774,6 +2825,7 @@ function buildRouteDetailRows(){
       const loadedRoute = routes.find(r=>normalizeTransporteNum(r.transportId)===target);
       const stats = getSalesStatsForTransporte(target);
       const chkInfo = getChecklistInfoForTransporte(String(target));
+      const pcdInfo = getPcdInfoForTransporte(String(target));
       const ruta = chkInfo && chkInfo.codigo ? chkInfo.codigo : String(target);
       const sala = chkInfo && chkInfo.sala ? chkInfo.sala : '';
       const programados = stats ? stats.total : 0;
@@ -2783,18 +2835,26 @@ function buildRouteDetailRows(){
       return {
         routeId: loadedRoute ? loadedRoute.routeId : null,
         ruta, transporte: loadedRoute ? loadedRoute.transportId : String(target), sala,
+        capacidad: pcdInfo && pcdInfo.capacidad!==null ? pcdInfo.capacidad : null,
+        horas: pcdInfo && pcdInfo.horas ? pcdInfo.horas : '',
         cajas, programados, atendidos, pendientes
       };
     });
   }
   return routes.map(r=>{
     const chkInfo = getChecklistInfoForTransporte(r.transportId);
+    const pcdInfo = getPcdInfoForTransporte(r.transportId);
     const ruta = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
     const sala = chkInfo && chkInfo.sala ? chkInfo.sala : '';
     const programados = r.totals.visits || 0;
     const atendidos = r.totals.delivered || 0;
     const pendientes = Math.max(programados - atendidos, 0);
-    return { routeId:r.routeId, ruta, transporte: r.transportId||'-', sala, cajas:0, programados, atendidos, pendientes };
+    return {
+      routeId:r.routeId, ruta, transporte: r.transportId||'-', sala,
+      capacidad: pcdInfo && pcdInfo.capacidad!==null ? pcdInfo.capacidad : null,
+      horas: pcdInfo && pcdInfo.horas ? pcdInfo.horas : '',
+      cajas:0, programados, atendidos, pendientes
+    };
   });
 }
 
@@ -2914,18 +2974,20 @@ function renderRouteDetailTable(){
     });
   }
 
-  rows.forEach(({routeId, ruta, transporte, cajas, programados, atendidos, pendientes})=>{
+  rows.forEach(({routeId, ruta, transporte, capacidad, horas, cajas, programados, atendidos, pendientes})=>{
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
     tr.title = 'Ver esta ruta en el mapa de arriba';
     tr.innerHTML = `
       <td>${esc(ruta)}</td>
       <td>${esc(transporte)}</td>
+      <td class="num">${capacidad!==null && capacidad!==undefined ? (capacidad*100).toFixed(1)+'%' : '—'}</td>
+      <td>${esc(horas) || '—'}</td>
       <td class="num">${cajas || '—'}</td>
       <td class="num">${programados}</td>
       <td class="num" style="color:var(--green);">${atendidos}</td>
       <td class="num" style="color:var(--red);">${pendientes}</td>
-      <td class="num"><button type="button" class="route-map-btn" title="Descargar mapa .kml de esta ruta">🗺️ Mapa</button></td>
+      <td class="num"><button type="button" class="route-map-btn" title="Descargar mapa .kml de esta ruta">🗺️</button></td>
       <td class="num">${routeId ? `<span class="chofer-del" data-id="${esc(routeId)}" title="Eliminar esta ruta">🗑</span>` : ''}</td>`;
     tr.addEventListener('click', (ev)=>{
       if(ev.target.closest('.chofer-del')) return;
