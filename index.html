@@ -2759,7 +2759,7 @@ function downloadRouteKml(ruta, transporte){
     nameParts.push('S/.'+p.amount.toFixed(2));
     const name = nameParts.join('|');
     const style = p.status==='ATENDIDO' ? 'placemark-blue' : 'placemark-red';
-    return `\t\t<Placemark>\n\t\t\t<n>${esc(name)}</n>\n\t\t\t<styleUrl>#${style}</styleUrl>\n\t\t\t<Point>\n\t\t\t\t<coordinates>${p.lng},${p.lat}</coordinates>\n\t\t\t</Point>\n\t\t</Placemark>`;
+    return `\t\t<Placemark>\n\t\t\t<name>${esc(name)}</name>\n\t\t\t<styleUrl>#${style}</styleUrl>\n\t\t\t<Point>\n\t\t\t\t<coordinates>${p.lng},${p.lat}</coordinates>\n\t\t\t</Point>\n\t\t</Placemark>`;
   }).join('\n');
 
   const docName = 'Ruta_'+ruta+(transporte && transporte!=='-' ? '_'+transporte : '');
@@ -2780,7 +2780,7 @@ function downloadRouteKml(ruta, transporte){
 \t\t\t\t</Icon>
 \t\t\t</IconStyle>
 \t\t</Style>
-\t\t<n>${esc(docName)}</n>
+\t\t<name>${esc(docName)}</name>
 \t\t<visibility>1</visibility>
 ${placemarks}
 \t</Document>
