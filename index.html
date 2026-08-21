@@ -462,7 +462,6 @@
     transition:.12s;
   }
   .route-map-btn:hover{background:rgba(63,174,102,.24);}
-  .map-pin-icon{background:transparent;border:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));}
 
   .map-fs-btn{
     display:inline-flex;align-items:center;gap:6px;
@@ -1909,24 +1908,6 @@ function getMaestroAddress(clientId){
   return c && c.address ? c.address : '';
 }
 
-/* Ícono tipo "pin" (gota), como los marcadores de una app de navegación/reparto, en vez de
-   un simple círculo plano. Se dibuja como SVG en línea (sin depender de imágenes externas). */
-function pinDivIcon(color, size){
-  size = size || 26;
-  const h = Math.round(size*1.3);
-  const svg = `<svg width="${size}" height="${h}" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">
-    <path d="M13 0C5.8 0 0 5.8 0 13c0 9.7 13 21 13 21s13-11.3 13-21C26 5.8 20.2 0 13 0z" fill="${color}" stroke="#14161a" stroke-width="1.5"/>
-    <circle cx="13" cy="13" r="5" fill="#fff"/>
-  </svg>`;
-  return L.divIcon({
-    html: svg,
-    className: 'map-pin-icon',
-    iconSize: [size, h],
-    iconAnchor: [size/2, h],
-    popupAnchor: [0, -h+4]
-  });
-}
-
 /* Genera un color distinto (HSL con tono distribuido) por cada ruta cargada */
 function getRouteColorPalette(routeIds){
   const n = routeIds.length;
@@ -2179,7 +2160,12 @@ function renderRoutesMap(){
   const bounds = [];
   points.forEach(p=>{
     const color = mapColorMode==='status' ? statusColorFor(p.status) : p.routeColor;
-    const marker = L.marker([p.lat, p.lng], {icon: pinDivIcon(color, 26)}).addTo(allRoutesMap);
+    const marker = L.circleMarker([p.lat, p.lng], {
+      radius:7, weight:1.5,
+      color:'#14161a',
+      fillColor: color,
+      fillOpacity:.9
+    }).addTo(allRoutesMap);
     const infoLines = [`<b>${esc(p.clientName)}</b>`];
     if(p.clientCode) infoLines.push(`Código: ${esc(p.clientCode)}`);
     if(p.address) infoLines.push(esc(p.address));
@@ -3037,7 +3023,9 @@ function renderRouteMap(route){
   const colorFor = s => s==='DELIVERED' ? '#3fae66' : s==='REJECTED' ? '#d15b5b' : '#d1a83f';
   const bounds = [];
   withLoc.forEach((v,i)=>{
-    const marker = L.marker([v.location.lat, v.location.lng], {icon: pinDivIcon(colorFor(v.status), 26)}).addTo(leafletMap);
+    const marker = L.circleMarker([v.location.lat, v.location.lng], {
+      radius:7, color:colorFor(v.status), fillColor:colorFor(v.status), fillOpacity:.85, weight:1.5
+    }).addTo(leafletMap);
     const infoLines = [`<b>${esc(v.clientName)}</b>`];
     const addr = getMaestroAddress(v.clientId);
     if(addr) infoLines.push(esc(addr));
