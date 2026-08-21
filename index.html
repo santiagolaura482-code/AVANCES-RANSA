@@ -2033,7 +2033,7 @@ function renderRoutesMap(){
     if(statusWrap) statusWrap.style.display='none';
     if(routeWrap) routeWrap.style.display='none';
     buildMultiSelect(mapRouteFilterState, 'mapRouteFilterBtn', 'mapRouteFilterPanel', [], 'Todas las rutas', false, '', ()=>safeRender(renderRoutesMap));
-    buildMultiSelect(mapSalaFilterState, 'mapSalaFilterBtn', 'mapSalaFilterPanel', [], 'Todas las salas', true, 'Carga el checklist en "Importar" para filtrar por sala', ()=>safeRender(renderRoutesMap));
+    buildMultiSelect(mapSalaFilterState, 'mapSalaFilterBtn', 'mapSalaFilterPanel', [], 'Todas las salas', true, 'Carga el checklist en "Importar" para filtrar por sala', ()=>{safeRender(renderRoutesMap); safeRender(renderRouteDetailTable);});
     return;
   }
   if(typeof L === 'undefined'){
@@ -2062,7 +2062,7 @@ function renderRoutesMap(){
   buildMultiSelect(mapSalaFilterState, 'mapSalaFilterBtn', 'mapSalaFilterPanel',
     salasPresent.map(s=>({value:s, label:s})), 'Todas las salas', salasPresentGlobal.length===0,
     salasPresentGlobal.length===0 ? 'Carga el checklist en "Importar" para filtrar por sala' : '',
-    ()=>safeRender(renderRoutesMap));
+    ()=>{safeRender(renderRoutesMap); safeRender(renderRouteDetailTable);});
 
   let points = mapRouteFilterState.size>0
     ? allPoints.filter(p=>mapRouteFilterState.has(p.routeLabel))
@@ -2705,13 +2705,14 @@ function buildRouteDetailRows(){
       const stats = getSalesStatsForTransporte(target);
       const chkInfo = getChecklistInfoForTransporte(String(target));
       const ruta = chkInfo && chkInfo.codigo ? chkInfo.codigo : String(target);
+      const sala = chkInfo && chkInfo.sala ? chkInfo.sala : '';
       const programados = stats ? stats.total : 0;
       const cajas = stats ? Math.round(stats.cajas) : 0;
       const atendidos = stats ? stats.atendidos : 0;
       const pendientes = Math.max(programados - atendidos, 0);
       return {
         routeId: loadedRoute ? loadedRoute.routeId : null,
-        ruta, transporte: loadedRoute ? loadedRoute.transportId : String(target),
+        ruta, transporte: loadedRoute ? loadedRoute.transportId : String(target), sala,
         cajas, programados, atendidos, pendientes
       };
     });
@@ -2719,10 +2720,11 @@ function buildRouteDetailRows(){
   return routes.map(r=>{
     const chkInfo = getChecklistInfoForTransporte(r.transportId);
     const ruta = chkInfo && chkInfo.codigo ? chkInfo.codigo : (r.transportId || 's/n');
+    const sala = chkInfo && chkInfo.sala ? chkInfo.sala : '';
     const programados = r.totals.visits || 0;
     const atendidos = r.totals.delivered || 0;
     const pendientes = Math.max(programados - atendidos, 0);
-    return { routeId:r.routeId, ruta, transporte: r.transportId||'-', cajas:0, programados, atendidos, pendientes };
+    return { routeId:r.routeId, ruta, transporte: r.transportId||'-', sala, cajas:0, programados, atendidos, pendientes };
   });
 }
 
@@ -2752,6 +2754,9 @@ function downloadRouteKml(ruta, transporte){
     const nameParts = ['', p.clientName||''];
     if(p.address) nameParts.push(p.address);
     if(p.cajas) nameParts.push('Cjs:'+Math.round(p.cajas));
+    if(p.clientCode) nameParts.push('Cod:'+p.clientCode);
+    nameParts.push(translateSegStatus(p.status));
+    nameParts.push('S/.'+p.amount.toFixed(2));
     const name = nameParts.join('|');
     const style = p.status==='ATENDIDO' ? 'placemark-blue' : 'placemark-red';
     return `\t\t<Placemark>\n\t\t\t<n>${esc(name)}</n>\n\t\t\t<styleUrl>#${style}</styleUrl>\n\t\t\t<Point>\n\t\t\t\t<coordinates>${p.lng},${p.lat}</coordinates>\n\t\t\t</Point>\n\t\t</Placemark>`;
@@ -2812,7 +2817,16 @@ function renderRouteDetailTable(){
 
   let rows = buildRouteDetailRows();
 
+  // El filtro de Sala del mapa (arriba) también acota esta tabla, para que ambos
+  // interactúen entre sí en vez de ser independientes.
+  if(mapSalaFilterState.size>0){
+    rows = rows.filter(r => mapSalaFilterState.has(r.sala));
+  }
+
   if(rows.length===0){
+    empty.textContent = mapSalaFilterState.size>0
+      ? 'Ninguna ruta pertenece a la(s) sala(s) elegida(s) en el filtro del mapa.'
+      : 'Sin rutas cargadas todavía.';
     empty.style.display = 'block';
     updateRouteDetailSortArrows();
     return;
