@@ -2993,18 +2993,25 @@ function horasToMinutes(horasStr){
     tr.style.cursor = 'pointer';
     tr.title = 'Ver esta ruta en el mapa de arriba';
 
-    // Alerta: ruta con más de 11:00 horas Y más del 95% de capacidad a la vez
+    // Nivel de alerta por horas de ruta: >11:00 = advertencia (rojo + ⚠️), >12:30 = peligro (rojo + 🛑)
     const horasMin = horasToMinutes(horas);
-    const isOverloaded = capacidad!==null && capacidad!==undefined && capacidad>0.95
-      && horasMin!==null && horasMin>660;
-    const alertStyle = isOverloaded ? 'color:var(--red);font-weight:700;' : '';
-    const alertIcon = isOverloaded ? ' <span title="Más de 11:00 h y más del 95% de capacidad">⚠️</span>' : '';
+    let severity = 'none';
+    if(horasMin!==null){
+      if(horasMin > 750) severity = 'danger';        // 12:30 = 750 min
+      else if(horasMin > 660) severity = 'warning';   // 11:00 = 660 min
+    }
+    const alertStyle = severity!=='none' ? 'color:var(--red);font-weight:700;' : '';
+    const alertIcon = severity==='danger'
+      ? ' <span title="Más de 12:30 h de ruta">🛑</span>'
+      : severity==='warning'
+        ? ' <span title="Más de 11:00 h de ruta">⚠️</span>'
+        : '';
 
     tr.innerHTML = `
       <td>${esc(ruta)}</td>
       <td>${esc(transporte)}</td>
-      <td class="num" style="${alertStyle}">${capacidad!==null && capacidad!==undefined ? (capacidad*100).toFixed(1)+'%' : '—'}${isOverloaded?alertIcon:''}</td>
-      <td style="${alertStyle}">${esc(horas) || '—'}</td>
+      <td class="num" style="${alertStyle}">${capacidad!==null && capacidad!==undefined ? (capacidad*100).toFixed(1)+'%' : '—'}</td>
+      <td style="${alertStyle}">${esc(horas) || '—'}${alertIcon}</td>
       <td class="num">${cajas || '—'}</td>
       <td class="num">${programados}</td>
       <td class="num" style="color:var(--green);">${atendidos}</td>
