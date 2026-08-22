@@ -443,8 +443,9 @@
 
   .map-detail-row{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start;margin-bottom:20px;}
   .map-detail-row > *{min-width:0;}
+  .map-detail-row > .panel{display:flex;flex-direction:column;}
   @media(max-width:1050px){.map-detail-row{grid-template-columns:1fr;}}
-  .route-detail-table-wrap{max-height:400px;overflow-y:auto;overflow-x:auto;}
+  .route-detail-table-wrap{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:auto;}
   .route-detail-table-wrap table.route-detail-table{min-width:0;width:100%;table-layout:auto;}
   .route-detail-table th, .route-detail-table td{text-align:center;padding:6px 3px;font-size:10.8px;}
   .route-detail-table th.num, .route-detail-table td.num{text-align:center;}
@@ -2142,10 +2143,12 @@ function renderRoutesMap(){
     if(routeWrap) routeWrap.style.display='none';
     buildMultiSelect(mapRouteFilterState, 'mapRouteFilterBtn', 'mapRouteFilterPanel', [], 'Todas las rutas', false, '', ()=>safeRender(renderRoutesMap));
     buildMultiSelect(mapSalaFilterState, 'mapSalaFilterBtn', 'mapSalaFilterPanel', [], 'Todas las salas', true, 'Carga el checklist en "Importar" para filtrar por sala', ()=>{safeRender(renderRoutesMap); safeRender(renderRouteDetailTable);});
+    syncDetailPanelHeight();
     return;
   }
   if(typeof L === 'undefined'){
     container.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">No se pudo cargar el mapa desde internet (librería bloqueada). El resto del dashboard sigue funcionando con normalidad.</div>';
+    syncDetailPanelHeight();
     return;
   }
 
@@ -2187,6 +2190,7 @@ function renderRoutesMap(){
         : '<div style="padding:60px 20px;text-align:center;color:var(--text-dim);">No hay coordenadas disponibles todavía. Carga el reporte de ventas y el Maestro de Clientes en "Importar" para ver todos los clientes programados.</div>');
     if(statusWrap) statusWrap.style.display='none';
     if(routeWrap) routeWrap.style.display='none';
+    syncDetailPanelHeight();
     return;
   }
 
@@ -2246,6 +2250,8 @@ function renderRoutesMap(){
   routeLegend.innerHTML = routesPresent.map(r=>
     `<span class="legend-item"><span class="legend-dot" style="background:${r.color}"></span>${esc(r.label)}</span>`
   ).join('');
+
+  syncDetailPanelHeight();
 }
 
 /* Busca en el checklist (Transporte -> Código/Sala) la info que corresponde a un transportId de ruta,
@@ -2974,15 +2980,31 @@ function renderRouteDetailTable(){
     });
   }
 
+/* Convierte "HH:MM" a minutos totales, para poder comparar horas de ruta */
+function horasToMinutes(horasStr){
+  if(!horasStr) return null;
+  const m = String(horasStr).trim().match(/^(\d{1,2}):(\d{2})/);
+  if(!m) return null;
+  return parseInt(m[1],10)*60 + parseInt(m[2],10);
+}
+
   rows.forEach(({routeId, ruta, transporte, capacidad, horas, cajas, programados, atendidos, pendientes})=>{
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
     tr.title = 'Ver esta ruta en el mapa de arriba';
+
+    // Alerta: ruta con más de 11:00 horas Y más del 95% de capacidad a la vez
+    const horasMin = horasToMinutes(horas);
+    const isOverloaded = capacidad!==null && capacidad!==undefined && capacidad>0.95
+      && horasMin!==null && horasMin>660;
+    const alertStyle = isOverloaded ? 'color:var(--red);font-weight:700;' : '';
+    const alertIcon = isOverloaded ? ' <span title="Más de 11:00 h y más del 95% de capacidad">⚠️</span>' : '';
+
     tr.innerHTML = `
       <td>${esc(ruta)}</td>
       <td>${esc(transporte)}</td>
-      <td class="num">${capacidad!==null && capacidad!==undefined ? (capacidad*100).toFixed(1)+'%' : '—'}</td>
-      <td>${esc(horas) || '—'}</td>
+      <td class="num" style="${alertStyle}">${capacidad!==null && capacidad!==undefined ? (capacidad*100).toFixed(1)+'%' : '—'}${isOverloaded?alertIcon:''}</td>
+      <td style="${alertStyle}">${esc(horas) || '—'}</td>
       <td class="num">${cajas || '—'}</td>
       <td class="num">${programados}</td>
       <td class="num" style="color:var(--green);">${atendidos}</td>
@@ -3451,6 +3473,7 @@ function setMapFullscreen(expand){
   document.getElementById('mapCollapseBtn').style.display = expand ? 'inline-flex' : 'none';
   // Se espera a que el navegador aplique el nuevo tamaño (CSS) antes de que Leaflet lo recalcule
   setTimeout(()=>{ if(allRoutesMap){ try{ allRoutesMap.invalidateSize(); }catch(e){} } }, 60);
+  syncDetailPanelHeight();
 }
 document.getElementById('mapExpandBtn').addEventListener('click', ()=>setMapFullscreen(true));
 document.getElementById('mapCollapseBtn').addEventListener('click', ()=>setMapFullscreen(false));
@@ -3459,6 +3482,31 @@ document.addEventListener('keydown', (e)=>{
   if(e.key==='Escape' && document.getElementById('mapPanel').classList.contains('map-panel-fullscreen')){
     setMapFullscreen(false);
   }
+});
+
+/* El panel "Detalle por ruta" toma la misma altura que el panel del mapa (medida real, no
+   estimada), con scroll interno propio para las filas que no entren — así ambos cuadros se
+   ven del mismo tamaño sin depender de que el contenido de la tabla "adivine" esa altura. */
+function syncDetailPanelHeight(){
+  const mapPanel = document.getElementById('mapPanel');
+  const panels = document.querySelectorAll('.map-detail-row > .panel');
+  if(!mapPanel || panels.length<2) return;
+  const detailPanel = panels[1];
+  if(mapPanel.classList.contains('map-panel-fullscreen')){
+    detailPanel.style.height = '';
+    return;
+  }
+  if(window.innerWidth <= 1050){
+    // En una sola columna (apilado) cada panel usa su propia altura natural
+    detailPanel.style.height = '';
+    return;
+  }
+  const h = mapPanel.getBoundingClientRect().height;
+  if(h>0) detailPanel.style.height = h+'px';
+}
+window.addEventListener('resize', ()=>{
+  clearTimeout(window._syncHeightTimer);
+  window._syncHeightTimer = setTimeout(syncDetailPanelHeight, 150);
 });
 
 document.getElementById('mapClientSearch').addEventListener('input', (e)=>{
