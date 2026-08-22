@@ -447,7 +447,7 @@
   @media(max-width:1050px){.map-detail-row{grid-template-columns:1fr;}}
   .route-detail-table-wrap{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:auto;}
   .route-detail-table-wrap table.route-detail-table{min-width:0;width:100%;table-layout:auto;}
-  .route-detail-table th, .route-detail-table td{text-align:center;padding:6px 3px;font-size:10.8px;}
+  .route-detail-table th, .route-detail-table td{text-align:center;padding:6px 2px;font-size:10.3px;}
   .route-detail-table th.num, .route-detail-table td.num{text-align:center;}
   .route-detail-table-empty{padding:40px 10px;text-align:center;color:var(--text-dim);font-size:12.5px;}
 
@@ -831,7 +831,10 @@
       </div>
 
       <div class="panel" style="margin-bottom:0;">
-        <h3>Detalle por ruta</h3>
+        <div class="filter-row" style="margin-bottom:10px;">
+          <h3 style="margin:0;">Detalle por ruta</h3>
+          <button type="button" id="auxOpenBtn" class="map-fs-btn" style="margin-left:auto;">👷 Auxiliares</button>
+        </div>
         <div class="route-detail-table-wrap">
           <table class="route-detail-table">
             <thead><tr>
@@ -839,6 +842,7 @@
               <th class="sortable" data-sort="transporte">Transp.<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="capacidad">Cap.<span class="sort-arrow"></span></th>
               <th class="sortable" data-sort="horas">Horas<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="auxiliares">Aux.<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="cajas">Cajas<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="programados">Prog.<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="atendidos">Atend.<span class="sort-arrow"></span></th>
@@ -1156,6 +1160,24 @@
     <div class="confirm-modal-actions">
       <button id="confirmModalCancel" class="confirm-modal-btn">Cancelar</button>
       <button id="confirmModalOk" class="confirm-modal-btn confirm-modal-btn-danger">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="auxModal" class="confirm-modal-overlay" style="display:none;">
+  <div class="confirm-modal" style="max-width:480px;">
+    <h3 style="margin:0 0 10px 0;font-size:14px;">Agregar auxiliares por ruta</h3>
+    <div class="confirm-modal-text" style="margin-bottom:8px;">
+      Pega una línea por ruta, con el formato <b>201 con 4</b> (el número de ruta sin el "600" — se agrega solo). Si una ruta ya tenía un valor, se reemplaza por el nuevo.
+    </div>
+    <textarea id="auxTextarea" placeholder="201 con 4
+202 con 4
+203 con 4
+204 con 3" style="width:100%;min-height:220px;background:var(--panel);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:12.5px;font-family:inherit;resize:vertical;"></textarea>
+    <div id="auxParsePreview" style="font-size:11.5px;color:var(--text-dim);margin-top:8px;min-height:16px;"></div>
+    <div class="confirm-modal-actions" style="margin-top:14px;">
+      <button id="auxCancelBtn" class="confirm-modal-btn">Cancelar</button>
+      <button id="auxSaveBtn" class="confirm-modal-btn confirm-modal-btn-danger" style="background:rgba(63,174,102,.15);border-color:var(--green);color:var(--green);">Guardar</button>
     </div>
   </div>
 </div>
@@ -2818,6 +2840,74 @@ function safeRender(fn){
 
 let routeDetailSort = { column: null, direction: 'asc' };
 
+/* =========================================================
+   AUXILIARES POR RUTA — ingresados a mano vía el botón "👷 Auxiliares"
+   ========================================================= */
+const AUXILIARES_STORAGE_KEY = 'jrgrodval_auxiliares_por_ruta_v1';
+let auxiliaresByRuta = {};
+
+function loadAuxiliaresFromStorage(){
+  try{
+    const raw = localStorage.getItem(AUXILIARES_STORAGE_KEY);
+    auxiliaresByRuta = raw ? JSON.parse(raw) : {};
+  }catch(e){
+    console.error('Error leyendo auxiliares guardados', e);
+    auxiliaresByRuta = {};
+  }
+}
+function saveAuxiliaresToStorage(){
+  try{
+    localStorage.setItem(AUXILIARES_STORAGE_KEY, JSON.stringify(auxiliaresByRuta));
+  }catch(e){
+    showToast('No se pudo guardar la lista de auxiliares en el almacenamiento local.');
+    console.error(e);
+  }
+}
+
+/* Convierte "201 con 4" -> {ruta:"600201", count:4}. Antepone "600" cuando el número de ruta
+   viene corto (3 dígitos, como en el ejemplo); si ya viene completo (6 dígitos) lo deja igual. */
+function parseAuxiliaresLine(line){
+  const m = line.trim().match(/^(\d+)\s*con\s*(\d+)\s*$/i);
+  if(!m) return null;
+  let rutaNum = m[1];
+  if(rutaNum.length===3) rutaNum = '600'+rutaNum;
+  const count = parseInt(m[2], 10);
+  if(isNaN(count)) return null;
+  return {ruta: rutaNum, count};
+}
+
+function parseAuxiliaresText(text){
+  const lines = String(text||'').split('\n').map(l=>l.trim()).filter(Boolean);
+  const parsed = [];
+  const invalid = [];
+  lines.forEach(line=>{
+    const r = parseAuxiliaresLine(line);
+    if(r) parsed.push(r); else invalid.push(line);
+  });
+  return {parsed, invalid};
+}
+
+function renderAuxParsePreview(){
+  const textarea = document.getElementById('auxTextarea');
+  const preview = document.getElementById('auxParsePreview');
+  if(!textarea || !preview) return;
+  const {parsed, invalid} = parseAuxiliaresText(textarea.value);
+  if(parsed.length===0 && invalid.length===0){ preview.textContent = ''; return; }
+  let msg = `${parsed.length} ruta(s) reconocida(s) correctamente.`;
+  if(invalid.length>0) msg += ` ${invalid.length} línea(s) no reconocida(s) (revisa el formato "201 con 4").`;
+  preview.textContent = msg;
+  preview.style.color = invalid.length>0 ? 'var(--red)' : 'var(--text-dim)';
+}
+
+function openAuxModal(){
+  document.getElementById('auxTextarea').value = '';
+  renderAuxParsePreview();
+  document.getElementById('auxModal').style.display = 'flex';
+}
+function closeAuxModal(){
+  document.getElementById('auxModal').style.display = 'none';
+}
+
 function buildRouteDetailRows(){
   // Si hay reporte de ventas, se listan TODAS sus rutas (aunque todavía no hayas cargado el
   // JSON de esa ruta) — "Atendidos/Pendientes" se completan solos en cuanto cargues el JSON
@@ -2843,6 +2933,7 @@ function buildRouteDetailRows(){
         ruta, transporte: loadedRoute ? loadedRoute.transportId : String(target), sala,
         capacidad: pcdInfo && pcdInfo.capacidad!==null ? pcdInfo.capacidad : null,
         horas: pcdInfo && pcdInfo.horas ? pcdInfo.horas : '',
+        auxiliares: auxiliaresByRuta[ruta]!==undefined ? auxiliaresByRuta[ruta] : null,
         cajas, programados, atendidos, pendientes
       };
     });
@@ -2859,6 +2950,7 @@ function buildRouteDetailRows(){
       routeId:r.routeId, ruta, transporte: r.transportId||'-', sala,
       capacidad: pcdInfo && pcdInfo.capacidad!==null ? pcdInfo.capacidad : null,
       horas: pcdInfo && pcdInfo.horas ? pcdInfo.horas : '',
+      auxiliares: auxiliaresByRuta[ruta]!==undefined ? auxiliaresByRuta[ruta] : null,
       cajas:0, programados, atendidos, pendientes
     };
   });
@@ -2988,7 +3080,7 @@ function horasToMinutes(horasStr){
   return parseInt(m[1],10)*60 + parseInt(m[2],10);
 }
 
-  rows.forEach(({routeId, ruta, transporte, capacidad, horas, cajas, programados, atendidos, pendientes})=>{
+  rows.forEach(({routeId, ruta, transporte, capacidad, horas, auxiliares, cajas, programados, atendidos, pendientes})=>{
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
     tr.title = 'Ver esta ruta en el mapa de arriba';
@@ -3012,6 +3104,7 @@ function horasToMinutes(horasStr){
       <td>${esc(transporte)}</td>
       <td class="num" style="${alertStyle}">${capacidad!==null && capacidad!==undefined ? (capacidad*100).toFixed(1)+'%' : '—'}</td>
       <td style="${alertStyle}">${esc(horas) || '—'}${alertIcon}</td>
+      <td class="num">${auxiliares!==null && auxiliares!==undefined ? auxiliares : '—'}</td>
       <td class="num">${cajas || '—'}</td>
       <td class="num">${programados}</td>
       <td class="num" style="color:var(--green);">${atendidos}</td>
@@ -3438,6 +3531,26 @@ document.getElementById('agendaClearBtn').addEventListener('click', ()=>{
   });
 });
 
+document.getElementById('auxOpenBtn').addEventListener('click', openAuxModal);
+document.getElementById('auxCancelBtn').addEventListener('click', closeAuxModal);
+document.getElementById('auxModal').addEventListener('click', (e)=>{
+  if(e.target.id==='auxModal') closeAuxModal();
+});
+document.getElementById('auxTextarea').addEventListener('input', renderAuxParsePreview);
+document.getElementById('auxSaveBtn').addEventListener('click', ()=>{
+  const textarea = document.getElementById('auxTextarea');
+  const {parsed, invalid} = parseAuxiliaresText(textarea.value);
+  if(parsed.length===0){
+    showToast(invalid.length>0 ? 'Ninguna línea tiene el formato correcto (ej. "201 con 4").' : 'Pega al menos una línea con el formato "201 con 4".');
+    return;
+  }
+  parsed.forEach(({ruta, count})=>{ auxiliaresByRuta[ruta] = count; });
+  saveAuxiliaresToStorage();
+  safeRender(renderRouteDetailTable);
+  closeAuxModal();
+  showToast(`Auxiliares guardados para ${parsed.length} ruta(s).`+(invalid.length>0 ? ` (${invalid.length} línea(s) ignorada(s) por formato incorrecto)` : ''));
+});
+
 // Pegar una imagen directamente (Ctrl+V) mientras se está en la pestaña Agenda: la procesa
 // igual que si se hubiera cargado por el selector de archivos. No interfiere con pegar texto
 // normal (por ejemplo al editar una celda de la tabla), solo actúa si el portapapeles trae una imagen.
@@ -3738,6 +3851,7 @@ loadSalesFromStorage();
 loadChecklistFromStorage();
 loadMaestroFromStorage();
 loadAgendaFromStorage();
+loadAuxiliaresFromStorage();
 updateStorageInfo();
 renderAll();
 </script>
