@@ -447,7 +447,7 @@
   @media(max-width:1050px){.map-detail-row{grid-template-columns:1fr;}}
   .route-detail-table-wrap{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:auto;}
   .route-detail-table-wrap table.route-detail-table{min-width:0;width:100%;table-layout:auto;}
-  .route-detail-table th, .route-detail-table td{text-align:center;padding:6px 2px;font-size:10.3px;}
+  .route-detail-table th, .route-detail-table td{text-align:center;padding:6px 1px;font-size:10px;}
   .route-detail-table th.num, .route-detail-table td.num{text-align:center;}
   .route-detail-table-empty{padding:40px 10px;text-align:center;color:var(--text-dim);font-size:12.5px;}
 
@@ -842,6 +842,7 @@
               <th class="sortable" data-sort="transporte">Transp.<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="capacidad">Cap.<span class="sort-arrow"></span></th>
               <th class="sortable" data-sort="horas">Horas<span class="sort-arrow"></span></th>
+              <th class="num sortable" data-sort="km">Km<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="auxiliares">Aux.<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="cajas">Cajas<span class="sort-arrow"></span></th>
               <th class="num sortable" data-sort="programados">Prog.<span class="sort-arrow"></span></th>
@@ -1411,6 +1412,7 @@ function parseChecklistWorkbook(arrayBuffer, fileName){
         const idxPcdTransporte = findHeaderIndex(pcdHeaders, h => h==='transporte');
         const idxCapacidad = findHeaderIndex(pcdHeaders, h => h==='capacidad');
         const idxHoras = findHeaderIndex(pcdHeaders, h => h==='horas');
+        const idxKm = findHeaderIndex(pcdHeaders, h => h==='distancias');
         for(let r=pcdHeaderIdx+1; r<pcdRows.length; r++){
           const row = pcdRows[r];
           if(!row || row.length===0) continue;
@@ -1422,6 +1424,9 @@ function parseChecklistWorkbook(arrayBuffer, fileName){
           let capacidad = idxCapacidad!==-1 ? parseFloat(row[idxCapacidad]) : NaN;
           capacidad = isNaN(capacidad) ? null : capacidad;
 
+          let km = idxKm!==-1 ? parseFloat(row[idxKm]) : NaN;
+          km = isNaN(km) ? null : km;
+
           let horas = idxHoras!==-1 ? row[idxHoras] : '';
           if(typeof horas === 'number'){
             // Por si Excel entrega la hora como fracción de día en vez de texto "HH:MM"
@@ -1430,7 +1435,7 @@ function parseChecklistWorkbook(arrayBuffer, fileName){
           }else{
             horas = String(horas||'').trim();
           }
-          pcd[tNum] = {capacidad, horas};
+          pcd[tNum] = {capacidad, horas, km};
         }
       }
     }catch(e){
@@ -2933,6 +2938,7 @@ function buildRouteDetailRows(){
         ruta, transporte: loadedRoute ? loadedRoute.transportId : String(target), sala,
         capacidad: pcdInfo && pcdInfo.capacidad!==null ? pcdInfo.capacidad : null,
         horas: pcdInfo && pcdInfo.horas ? pcdInfo.horas : '',
+        km: pcdInfo && pcdInfo.km!==null ? pcdInfo.km : null,
         auxiliares: auxiliaresByRuta[ruta]!==undefined ? auxiliaresByRuta[ruta] : null,
         cajas, programados, atendidos, pendientes
       };
@@ -2950,6 +2956,7 @@ function buildRouteDetailRows(){
       routeId:r.routeId, ruta, transporte: r.transportId||'-', sala,
       capacidad: pcdInfo && pcdInfo.capacidad!==null ? pcdInfo.capacidad : null,
       horas: pcdInfo && pcdInfo.horas ? pcdInfo.horas : '',
+      km: pcdInfo && pcdInfo.km!==null ? pcdInfo.km : null,
       auxiliares: auxiliaresByRuta[ruta]!==undefined ? auxiliaresByRuta[ruta] : null,
       cajas:0, programados, atendidos, pendientes
     };
@@ -3080,7 +3087,7 @@ function horasToMinutes(horasStr){
   return parseInt(m[1],10)*60 + parseInt(m[2],10);
 }
 
-  rows.forEach(({routeId, ruta, transporte, capacidad, horas, auxiliares, cajas, programados, atendidos, pendientes})=>{
+  rows.forEach(({routeId, ruta, transporte, capacidad, horas, km, auxiliares, cajas, programados, atendidos, pendientes})=>{
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
     tr.title = 'Ver esta ruta en el mapa de arriba';
@@ -3104,6 +3111,7 @@ function horasToMinutes(horasStr){
       <td>${esc(transporte)}</td>
       <td class="num" style="${alertStyle}">${capacidad!==null && capacidad!==undefined ? (capacidad*100).toFixed(1)+'%' : '—'}</td>
       <td style="${alertStyle}">${esc(horas) || '—'}${alertIcon}</td>
+      <td class="num">${km!==null && km!==undefined ? km.toFixed(1) : '—'}</td>
       <td class="num">${auxiliares!==null && auxiliares!==undefined ? auxiliares : '—'}</td>
       <td class="num">${cajas || '—'}</td>
       <td class="num">${programados}</td>
