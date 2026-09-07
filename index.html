@@ -833,7 +833,8 @@
       <div class="panel" style="margin-bottom:0;">
         <div class="filter-row" style="margin-bottom:10px;">
           <h3 style="margin:0;">Detalle por ruta</h3>
-          <button type="button" id="auxOpenBtn" class="map-fs-btn" style="margin-left:auto;">👷 Auxiliares</button>
+          <button type="button" id="routeDetailExportBtn" class="map-fs-btn" style="margin-left:auto;">⬇ Exportar</button>
+          <button type="button" id="auxOpenBtn" class="map-fs-btn">👷 Auxiliares</button>
         </div>
         <div class="route-detail-table-wrap">
           <table class="route-detail-table">
@@ -3037,36 +3038,57 @@ ${placemarks}
   }
 }
 
-function renderRouteDetailTable(){
-  const tbody = document.getElementById('routeDetailTbody');
-  const empty = document.getElementById('routeDetailTableEmpty');
-  if(!tbody || !empty) return;
-  tbody.innerHTML = '';
-
+/* Exporta exactamente lo que se ve en "Detalle por ruta" (con el filtro de Sala y el orden
+   de columna que estén activos) a un archivo Excel. */
+function exportRouteDetailExcel(){
   if(routes.length===0 && !salesReport){
-    empty.style.display = 'block';
-    updateRouteDetailSortArrows();
+    showToast('No hay rutas cargadas para exportar.');
     return;
   }
-  empty.style.display = 'none';
+  const rows = getRouteDetailDisplayRows();
+  if(rows.length===0){
+    showToast('No hay datos para exportar con el filtro actual.');
+    return;
+  }
+  const data = rows.map(r=>({
+    'Ruta': r.ruta,
+    'Transporte': r.transporte,
+    'Capacidad (%)': r.capacidad!==null && r.capacidad!==undefined ? Number((r.capacidad*100).toFixed(1)) : '',
+    'Horas': r.horas || '',
+    'Km': r.km!==null && r.km!==undefined ? Number(r.km.toFixed(1)) : '',
+    'Auxiliares': r.auxiliares!==null && r.auxiliares!==undefined ? r.auxiliares : '',
+    'Cajas Programadas': r.cajas || '',
+    'Clientes Programados': r.programados,
+    'Atendidos': r.atendidos,
+    'Pendientes': r.pendientes
+  }));
+  const baseName = 'detalle_por_ruta_'+new Date().toISOString().slice(0,10);
 
+  if(typeof XLSX === 'undefined'){
+    exportCsvOrTextFallback(data, baseName);
+    return;
+  }
+  try{
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [{wch:10},{wch:14},{wch:13},{wch:9},{wch:9},{wch:11},{wch:17},{wch:19},{wch:11},{wch:11}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Detalle por ruta');
+    XLSX.writeFile(wb, baseName+'.xlsx');
+    showToast('Detalle por ruta exportado.');
+  }catch(e){
+    console.error('Falló exportar detalle por ruta a Excel, se usa alternativa', e);
+    exportCsvOrTextFallback(data, baseName);
+  }
+}
+
+/* Filas a mostrar en "Detalle por ruta" ya con el filtro de Sala y el orden de columna
+   aplicados — la usan tanto el render de la tabla como la exportación a Excel, para que
+   ambos reflejen siempre exactamente lo mismo que se ve en pantalla. */
+function getRouteDetailDisplayRows(){
   let rows = buildRouteDetailRows();
-
-  // El filtro de Sala del mapa (arriba) también acota esta tabla, para que ambos
-  // interactúen entre sí en vez de ser independientes.
   if(mapSalaFilterState.size>0){
     rows = rows.filter(r => mapSalaFilterState.has(r.sala));
   }
-
-  if(rows.length===0){
-    empty.textContent = mapSalaFilterState.size>0
-      ? 'Ninguna ruta pertenece a la(s) sala(s) elegida(s) en el filtro del mapa.'
-      : 'Sin rutas cargadas todavía.';
-    empty.style.display = 'block';
-    updateRouteDetailSortArrows();
-    return;
-  }
-
   if(routeDetailSort.column){
     const col = routeDetailSort.column;
     const dir = routeDetailSort.direction === 'asc' ? 1 : -1;
@@ -3077,6 +3099,35 @@ function renderRouteDetailTable(){
       }
       return (av - bv) * dir;
     });
+  }
+  return rows;
+}
+
+function renderRouteDetailTable(){
+  const tbody = document.getElementById('routeDetailTbody');
+  const empty = document.getElementById('routeDetailTableEmpty');
+  if(!tbody || !empty) return;
+  tbody.innerHTML = '';
+
+  if(routes.length===0 && !salesReport){
+    empty.textContent = 'Sin rutas cargadas todavía.';
+    empty.style.display = 'block';
+    updateRouteDetailSortArrows();
+    return;
+  }
+  empty.style.display = 'none';
+
+  // El filtro de Sala del mapa (arriba) también acota esta tabla, para que ambos
+  // interactúen entre sí en vez de ser independientes.
+  const rows = getRouteDetailDisplayRows();
+
+  if(rows.length===0){
+    empty.textContent = mapSalaFilterState.size>0
+      ? 'Ninguna ruta pertenece a la(s) sala(s) elegida(s) en el filtro del mapa.'
+      : 'Sin rutas cargadas todavía.';
+    empty.style.display = 'block';
+    updateRouteDetailSortArrows();
+    return;
   }
 
 /* Convierte "HH:MM" a minutos totales, para poder comparar horas de ruta */
@@ -3539,6 +3590,7 @@ document.getElementById('agendaClearBtn').addEventListener('click', ()=>{
   });
 });
 
+document.getElementById('routeDetailExportBtn').addEventListener('click', exportRouteDetailExcel);
 document.getElementById('auxOpenBtn').addEventListener('click', openAuxModal);
 document.getElementById('auxCancelBtn').addEventListener('click', closeAuxModal);
 document.getElementById('auxModal').addEventListener('click', (e)=>{
